@@ -1,0 +1,38 @@
+# Build
+.gradle/
+build/
+**/build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Keystores
+*.jks
+*.keystore
+
+# Extracted vendor trees (original zips kept in vendor/archives/)
+vendor/sdk/
+vendor/reference/
+vendor/desktop/
+
+# Desktop installer zip exceeds GitHub file size limit — keep locally in vendor/archives/
+vendor/archives/123RFID_Desktop_3.0.0.71.zip
+
+# Local AAR unpack / temp artifacts (ship rfidapi3lib-*.aar only)
+app/libs/aar_extract/
+app/libs/aar_tmp/
+app/libs/classes_extract/
+app/libs/cls/
+app/libs/rfidapi_extract/
+app/libs/rfid_aar/
+app/libs/*.zip
+
+.kotlin/
+.tmp-aar/
+.tmp-classes/
+.tmp-aar.zip
+.tmp-classes.zip

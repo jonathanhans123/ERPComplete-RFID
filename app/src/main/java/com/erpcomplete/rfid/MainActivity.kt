@@ -1,0 +1,105 @@
+package com.erpcomplete.rfid
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.erpcomplete.rfid.ui.navigation.AppNavHost
+import com.erpcomplete.rfid.ui.navigation.Routes
+import com.erpcomplete.rfid.ui.theme.ERPCompleteRfidTheme
+
+class MainActivity : ComponentActivity() {
+
+    private var onPermissionsReady: (() -> Unit)? = null
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { _ ->
+        onPermissionsReady?.invoke()
+        onPermissionsReady = null
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
+        val container = (application as ErpCompleteRfidApp).container
+
+        setContent {
+            val session = remember(container) { container.authStore.readSessionSnapshot() }
+            val navController = rememberNavController()
+            val backStackEntry by navController.currentBackStackEntryAsState()
+
+            val loggedIn by container.authStore.isLoggedIn.collectAsState(initial = session.loggedIn)
+            val hasWorkspace by container.authStore.hasWorkspaceSelected.collectAsState(initial = session.hasWorkspace)
+
+            val startDestination = remember(session) {
+                when {
+                    !session.loggedIn -> Routes.LOGIN
+                    !session.hasWorkspace -> Routes.WORKSPACE
+                    else -> Routes.MAIN
+                }
+            }
+
+            LaunchedEffect(loggedIn, hasWorkspace, backStackEntry?.destination?.route) {
+                val target = when {
+                    !loggedIn -> Routes.LOGIN
+                    !hasWorkspace -> Routes.WORKSPACE
+                    else -> Routes.MAIN
+                }
+                val current = backStackEntry?.destination?.route
+                if (current != null && current != target) {
+                    navController.navigate(target) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
+            }
+
+            ERPCompleteRfidTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    AppNavHost(
+                        navController = navController,
+                        container = container,
+                        startDestination = startDestination,
+                    )
+                }
+            }
+        }
+
+        requestRuntimePermissions {
+            container.rfidManager.tryAutoReconnect()
+        }
+    }
+
+    private fun requestRuntimePermissions(onGranted: () -> Unit) {
+        val permissions = buildList {
+            add(Manifest.permission.CAMERA)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+                add(Manifest.permission.BLUETOOTH_SCAN)
+            }
+        }.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (permissions.isEmpty()) {
+            onGranted()
+        } else {
+            onPermissionsReady = onGranted
+            permissionLauncher.launch(permissions.toTypedArray())
+        }
+    }
+}

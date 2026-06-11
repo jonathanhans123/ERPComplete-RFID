@@ -155,7 +155,7 @@ private fun statusColors(raw: String?): Pair<Color, Color> {
         MaterialTheme.colorScheme.onSurfaceVariant,
     )
     return when {
-        key.contains("complete") || key.contains("approved") || key == "done" ->
+        key.contains("complete") || key.contains("approved") || key == "done" || key == "full" ->
             Pair(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
         key.contains("progress") || key.contains("partial") ->
             Pair(MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
@@ -319,7 +319,7 @@ private fun WorkflowTableRows(
     rowBackground: ((Int) -> Color)?,
 ) {
     when {
-        loading && rows.isEmpty() -> TableMessage("Loading…")
+        loading && rows.isEmpty() -> WorkflowTableSkeleton(rows = 5, columns = columns.size.coerceAtLeast(3))
         rows.isEmpty() -> TableMessage(emptyText)
         else -> {
             rows.forEachIndexed { index, row ->
@@ -347,7 +347,7 @@ private fun ColumnScope.WorkflowTableBody(
     fillAvailableHeight: Boolean,
 ) {
     when {
-        loading && rows.isEmpty() -> TableMessage("Loading…")
+        loading && rows.isEmpty() -> WorkflowTableSkeleton(rows = 5, columns = columns.size.coerceAtLeast(3))
         rows.isEmpty() -> TableMessage(emptyText)
         else -> {
             val scrollState = rememberScrollState()

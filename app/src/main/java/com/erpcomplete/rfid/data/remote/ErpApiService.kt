@@ -2,6 +2,7 @@ package com.erpcomplete.rfid.data.remote
 
 import com.erpcomplete.rfid.data.model.BusinessUnitOption
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -242,6 +243,15 @@ interface ErpApiService {
         @Query("per_page") perPage: Int = 100,
     ): Response<ApiEnvelope<JsonElement>>
 
+    @GET("warehouses/{warehouseId}/unlocated-stocks")
+    suspend fun listUnlocatedStocks(
+        @Path("warehouseId") warehouseId: Long,
+        @Query("search") search: String? = null,
+        @Query("non_zero_only") nonZeroOnly: Boolean? = true,
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 100,
+    ): Response<ApiEnvelope<JsonElement>>
+
     @GET("stock-adjustments")
     suspend fun listStockAdjustments(
         @Query("status") status: String? = null,
@@ -273,6 +283,38 @@ interface ErpApiService {
         @Query("warehouse_location_id") warehouseLocationId: Long? = null,
         @Query("batch_number") batchNumber: String? = null,
         @Query("roll_number") rollNumber: String? = null,
+    ): Response<JsonElement>
+
+    @GET("stock-relocations")
+    suspend fun listStockRelocations(
+        @Query("warehouse_id") warehouseId: Long? = null,
+        @Query("status") status: String? = null,
+        @Query("search") search: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 50,
+    ): Response<ApiEnvelope<JsonElement>>
+
+    @GET("stock-relocations/{id}")
+    suspend fun getStockRelocation(@Path("id") id: Long): Response<ApiEnvelope<JsonElement>>
+
+    @POST("stock-relocations")
+    suspend fun createStockRelocation(@Body body: CreateStockRelocationRequest): Response<ApiEnvelope<JsonElement>>
+
+    @POST("stock-relocations/{id}/approve")
+    suspend fun approveStockRelocation(@Path("id") id: Long): Response<ApiEnvelope<JsonElement>>
+
+    @POST("stock-relocations/{id}/reject")
+    suspend fun rejectStockRelocation(
+        @Path("id") id: Long,
+        @Body body: RejectStockRelocationRequest? = null,
+    ): Response<ApiEnvelope<JsonElement>>
+
+    @GET("stock-relocations/{productId}/stock")
+    suspend fun getRelocationProductStock(
+        @Path("productId") productId: Long,
+        @Query("warehouse_id") warehouseId: Long,
+        @Query("from_warehouse_location_id") fromWarehouseLocationId: Long? = null,
+        @Query("variation_id") variationId: Long? = null,
     ): Response<JsonElement>
 
     @GET("stock-opnames")
@@ -340,6 +382,7 @@ data class LoginResponse(
     val token_type: String?,
     val user: LoginUser?,
     val business_units: List<BusinessUnitDto>?,
+    val mobile_permissions: JsonObject? = null,
     val message: String?,
 )
 
@@ -361,6 +404,7 @@ data class CurrentUserResponse(
     val success: Boolean?,
     val data: LoginUser?,
     val business_units: List<BusinessUnitDto>?,
+    val mobile_permissions: JsonObject? = null,
 )
 
 data class PaginationMeta(
@@ -571,4 +615,41 @@ data class CreateStockAdjustmentRequest(
     val adjustment_quantity: Double,
     val new_quantity: Double? = null,
     val item_notes: String? = null,
+)
+
+data class CreateStockRelocationRequest(
+    val warehouse_id: Long,
+    val from_warehouse_location_id: Long? = null,
+    val to_warehouse_location_id: Long? = null,
+    val relocation_date: String,
+    val reason: String,
+    val notes: String? = null,
+    val products: List<RelocationProductPayload>,
+)
+
+data class RelocationProductPayload(
+    val id: Long,
+    val type: String,
+    val quantity: Double,
+    val variation_value_id: Long? = null,
+    val roll_data: RelocationRollDataPayload? = null,
+    val variations: List<RelocationVariationPayload>? = null,
+)
+
+data class RelocationRollDataPayload(
+    val rolls: List<RelocationRollLinePayload>,
+)
+
+data class RelocationRollLinePayload(
+    val roll_number: String?,
+    val used_length: Double,
+)
+
+data class RelocationVariationPayload(
+    val variation_value_id: Long,
+    val quantity: Double,
+)
+
+data class RejectStockRelocationRequest(
+    val rejection_reason: String? = null,
 )

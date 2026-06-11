@@ -221,6 +221,7 @@ fun LoginScreen(container: AppContainer, onLoginSuccess: (needsWorkspace: Boolea
                                         name = body.user?.name,
                                         businessUnits = units,
                                     )
+                                    container.authStore.saveMobileInventoryPermissionsFromJson(body.mobile_permissions)
                                     val wsRes = container.api.listWorkspaces()
                                     if (!wsRes.isSuccessful) {
                                         error = ApiErrorParser.httpMessage(wsRes)
@@ -241,6 +242,7 @@ fun LoginScreen(container: AppContainer, onLoginSuccess: (needsWorkspace: Boolea
                                             wsPayload.warehouses.size == 1 &&
                                             wsPayload.warehouses.first().teamId != null -> {
                                             container.authStore.saveWorkspace(wsPayload.warehouses.first())
+                                            container.refreshMobilePermissions()
                                             onLoginSuccess(false)
                                         }
                                         else -> onLoginSuccess(true)

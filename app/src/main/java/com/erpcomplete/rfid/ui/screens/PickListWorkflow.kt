@@ -15,6 +15,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,7 @@ import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.IndexColumnSpec
 import com.erpcomplete.rfid.ui.components.JsonIndexListTable
+import com.erpcomplete.rfid.ui.components.PickListDetailSkeleton
 import com.erpcomplete.rfid.ui.components.LiveSyncIndicator
 import com.erpcomplete.rfid.ui.components.StatusBanner
 import com.erpcomplete.rfid.ui.components.TableCell
@@ -158,6 +160,8 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
     val scanColors = rememberScanMatchColors()
 
     var pickList by remember { mutableStateOf<JsonObject?>(null) }
+    var pickLoading by remember { mutableStateOf(false) }
+    var pickLoadedId by remember { mutableLongStateOf(-1L) }
     val lineEdits = remember { mutableStateListOf<PickLineEdit>() }
     var lineHighlights by remember { mutableStateOf<Map<String, ScanMatchStatus>>(emptyMap()) }
     val containerEdits = remember { mutableStateListOf<ContainerPackEdit>() }
@@ -279,16 +283,27 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
         }
     }
 
-    fun openPick(id: Long) {
+    fun beginPickDetail(id: Long) {
         message = null
+        pickList = null
+        lineEdits.clear()
+        containerEdits.clear()
+        pickLoading = true
+        pickLoadedId = -1L
+        step = PickStep.Detail(id)
+    }
+
+    fun openPick(id: Long) {
+        beginPickDetail(id)
         scope.launchWorkflow(
-            setLoading = { actionLoading = it },
-            onError = { message = it },
+            setLoading = { },
+            onError = { message = it; pickLoading = false },
         ) {
             val res = container.api.getPickList(id)
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
             applyPickList(WorkflowJson.envelopeObject(res) ?: error("Empty pick list"))
-            step = PickStep.Detail(id)
+            pickLoadedId = id
+            pickLoading = false
             mergePickDraft(id)
             null
         }
@@ -297,11 +312,13 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
     LaunchedEffect((step as? PickStep.Detail)?.id) {
         val id = (step as? PickStep.Detail)?.id ?: return@LaunchedEffect
         while (true) {
+            kotlinx.coroutines.delay(10_000)
+            if ((step as? PickStep.Detail)?.id != id) break
+            if (pickLoading || pickLoadedId != id) continue
             runCatching {
                 val res = container.api.getPickList(id)
                 if (res.isSuccessful) applyPickList(WorkflowJson.envelopeObject(res))
             }
-            kotlinx.coroutines.delay(10_000)
         }
     }
 
@@ -349,6 +366,9 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
 
             is PickStep.Detail -> {
                 val pickId = current.id
+                if (pickLoading || pickLoadedId != pickId) {
+                    PickListDetailSkeleton(Modifier.weight(1f))
+                } else {
                 TabRow(detailTab) {
                     Tab(selected = detailTab == 0, onClick = { detailTab = 0 }, text = { Text("Pick") })
                     Tab(selected = detailTab == 1, onClick = { detailTab = 1 }, text = { Text("Pack & cut") })
@@ -641,6 +661,7 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                             }
                         })
                     }
+                }
                 }
             }
         }

@@ -44,6 +44,7 @@ import com.erpcomplete.rfid.ui.components.ErpCard
 import com.erpcomplete.rfid.ui.components.ErpGradientHeader
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.StatusBanner
+import com.erpcomplete.rfid.ui.components.WorkflowListCardSkeleton
 import com.erpcomplete.rfid.util.ApiErrorParser
 import com.erpcomplete.rfid.util.WorkflowJson
 import kotlinx.coroutines.launch
@@ -121,7 +122,7 @@ fun WorkspaceSelectionScreen(
         error?.let { StatusBanner(it, isError = true) }
 
         if (loading) {
-            Text("Loading workspaces…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            WorkflowListCardSkeleton(count = 4)
         } else {
             Column(
                 Modifier.verticalScroll(rememberScrollState()),
@@ -192,6 +193,7 @@ fun WorkspaceSelectionScreen(
                                             try {
                                                 error = null
                                                 container.authStore.saveWorkspace(workspace)
+                                                container.refreshMobilePermissions()
                                                 onSelected()
                                             } catch (e: Exception) {
                                                 error = e.message

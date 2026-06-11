@@ -5,8 +5,10 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.erpcomplete.rfid.data.model.BusinessUnitOption
+import com.erpcomplete.rfid.data.model.MobileInventoryPermissions
 import com.erpcomplete.rfid.data.model.WorkspaceOption
 import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -54,6 +56,23 @@ class AuthStore(private val context: Context) {
         !bu.isNullOrBlank() && !team.isNullOrBlank() && !warehouse.isNullOrBlank()
     }
 
+    suspend fun saveMobileInventoryPermissionsFromJson(json: JsonObject?) {
+        context.dataStore.edit { prefs ->
+            if (json == null) {
+                prefs.remove(KEY_MOBILE_PERMS)
+            } else {
+                prefs[KEY_MOBILE_PERMS] = json.toString()
+            }
+        }
+    }
+
+    fun mobileInventoryPermissionsBlocking(): MobileInventoryPermissions {
+        val json = runBlocking { context.dataStore.data.first()[KEY_MOBILE_PERMS] } ?: return MobileInventoryPermissions.None
+        return runCatching {
+            MobileInventoryPermissions.fromJson(gson.fromJson(json, JsonObject::class.java))
+        }.getOrDefault(MobileInventoryPermissions.None)
+    }
+
     suspend fun saveLogin(
         token: String,
         email: String,
@@ -65,6 +84,7 @@ class AuthStore(private val context: Context) {
             prefs[KEY_EMAIL] = email
             if (!name.isNullOrBlank()) prefs[KEY_NAME] = name
             prefs[KEY_BU_LIST] = gson.toJson(businessUnits)
+            prefs.remove(KEY_MOBILE_PERMS)
             prefs.remove(KEY_BU)
             prefs.remove(KEY_BU_NAME)
             prefs.remove(KEY_TEAM)
@@ -122,6 +142,7 @@ class AuthStore(private val context: Context) {
             val device = prefs[KEY_DEVICE]
             prefs.clear()
             device?.let { prefs[KEY_DEVICE] = it }
+            prefs.remove(KEY_MOBILE_PERMS)
         }
         notifySessionCache()
     }
@@ -162,6 +183,7 @@ class AuthStore(private val context: Context) {
         private val KEY_WAREHOUSE = stringPreferencesKey("warehouse_id")
         private val KEY_WAREHOUSE_NAME = stringPreferencesKey("warehouse_name")
         private val KEY_BU_LIST = stringPreferencesKey("business_units_json")
+        private val KEY_MOBILE_PERMS = stringPreferencesKey("mobile_inventory_permissions_json")
         private val KEY_DEVICE = stringPreferencesKey("device_uuid")
     }
 }

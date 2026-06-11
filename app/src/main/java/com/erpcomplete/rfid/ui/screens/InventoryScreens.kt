@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -39,14 +40,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.erpcomplete.rfid.data.AppContainer
+import com.erpcomplete.rfid.data.model.MobileInventoryPermissions
 import com.erpcomplete.rfid.data.remote.CreateStockAdjustmentRequest
 import com.erpcomplete.rfid.data.remote.WarehouseLocationUpsertRequest
-import com.erpcomplete.rfid.data.remote.WarehouseUpsertRequest
 import com.erpcomplete.rfid.ui.components.ErpCard
 import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.LiveSyncIndicator
+import com.erpcomplete.rfid.ui.components.LocationStockDetailSheet
+import com.erpcomplete.rfid.ui.components.LocationStockLineCard
 import com.erpcomplete.rfid.ui.components.SortableCardListToolbar
+import com.erpcomplete.rfid.ui.components.UnmarkedLocationCard
+import com.erpcomplete.rfid.ui.components.WarehouseLocationPickerCard
+import com.erpcomplete.rfid.ui.components.AdjustmentDetailSkeleton
+import com.erpcomplete.rfid.ui.components.WarehouseInfoSkeleton
+import com.erpcomplete.rfid.ui.components.WorkflowFormSkeleton
+import com.erpcomplete.rfid.ui.components.WorkflowListCardSkeleton
 import com.erpcomplete.rfid.ui.components.applyCardListSortSearch
 import com.erpcomplete.rfid.ui.components.rememberTableSortSearch
 import com.erpcomplete.rfid.ui.components.PickerOption
@@ -54,6 +63,7 @@ import com.erpcomplete.rfid.ui.components.SearchablePickerField
 import com.erpcomplete.rfid.ui.components.SearchablePickerSheet
 import com.erpcomplete.rfid.ui.components.StatusBanner
 import com.erpcomplete.rfid.ui.components.WorkflowTile
+import com.erpcomplete.rfid.ui.permissions.rememberMobileInventoryPermissions
 import com.erpcomplete.rfid.ui.components.rememberWorkflowLiveList
 import com.erpcomplete.rfid.util.ApiErrorParser
 import com.erpcomplete.rfid.util.DisplayFormat
@@ -64,8 +74,11 @@ import com.erpcomplete.rfid.util.WorkflowJson.double
 import com.erpcomplete.rfid.util.WorkflowJson.envelopeList
 import com.erpcomplete.rfid.util.WorkflowJson.envelopePage
 import com.erpcomplete.rfid.util.WorkflowJson.envelopeObject
+import com.erpcomplete.rfid.util.WorkflowJson.envelopeTotal
 import com.erpcomplete.rfid.util.WorkflowJson.formatQtyWithUnit
 import com.erpcomplete.rfid.util.WorkflowJson.isRollStockLine
+import com.erpcomplete.rfid.util.WorkflowJson.onHandQuantity
+import com.erpcomplete.rfid.util.WorkflowJson.rollFillStatus
 import com.erpcomplete.rfid.util.WorkflowJson.long
 import com.erpcomplete.rfid.util.WorkflowJson.nestedItems
 import com.erpcomplete.rfid.util.WorkflowJson.obj
@@ -76,7 +89,11 @@ import com.erpcomplete.rfid.util.WorkflowJson.rollLengthLabel
 import com.erpcomplete.rfid.util.WorkflowJson.string
 import com.erpcomplete.rfid.util.WorkflowJson.variationLabel
 import com.google.gson.JsonArray
+import com.erpcomplete.rfid.util.StockLinePreset
+import com.erpcomplete.rfid.util.UNMARKED_STOCK_LOCATION_ID
+import com.erpcomplete.rfid.util.toStockLinePreset
 import com.erpcomplete.rfid.util.launchWorkflow
+import com.erpcomplete.rfid.util.toStockLinePreset
 import com.erpcomplete.rfid.util.workspaceContext
 import com.google.gson.JsonObject
 import java.time.LocalDate
@@ -84,7 +101,6 @@ import java.time.LocalDate
 private sealed class InvStep {
     data object Hub : InvStep()
     data object Warehouses : InvStep()
-    data class WarehouseForm(val id: Long?) : InvStep()
     data object Locations : InvStep()
     data class LocationForm(val id: Long?) : InvStep()
     data object StockByLocation : InvStep()
@@ -103,6 +119,9 @@ private sealed class InvStep {
         val quantityUnitSuffix: String? = null,
     ) : InvStep()
     data class AdjustmentDetail(val id: Long) : InvStep()
+    data object Relocations : InvStep()
+    data class RelocationForm(val preset: RelocationFormPreset = RelocationFormPreset()) : InvStep()
+    data class RelocationDetail(val id: Long) : InvStep()
 }
 
 private data class HubTile(
@@ -132,7 +151,6 @@ private val ADJUSTMENT_TYPES = listOf(
 private fun InvStep.encode(): String = when (this) {
     InvStep.Hub -> "hub"
     InvStep.Warehouses -> "warehouses"
-    is InvStep.WarehouseForm -> "wf:${id ?: "new"}"
     InvStep.Locations -> "locations"
     is InvStep.LocationForm -> "lf:${id ?: "new"}"
     InvStep.StockByLocation -> "stock_pick"
@@ -140,14 +158,16 @@ private fun InvStep.encode(): String = when (this) {
     InvStep.Adjustments -> "adjustments"
     is InvStep.AdjustmentForm -> "adjust_form"
     is InvStep.AdjustmentDetail -> "adjust:$id"
+    InvStep.Relocations -> "relocations"
+    is InvStep.RelocationForm -> "relocate_form"
+    is InvStep.RelocationDetail -> "relocate:$id"
 }
 
 private fun decodeInvStep(raw: String): InvStep {
     val parts = raw.split(':', limit = 2)
     return when (parts[0]) {
         "hub" -> InvStep.Hub
-        "warehouses" -> InvStep.Warehouses
-        "wf" -> InvStep.WarehouseForm(parts.getOrNull(1)?.takeUnless { it == "new" }?.toLongOrNull())
+        "warehouses", "wf" -> InvStep.Warehouses
         "locations" -> InvStep.Locations
         "lf" -> InvStep.LocationForm(parts.getOrNull(1)?.takeUnless { it == "new" }?.toLongOrNull())
         "stock_pick" -> InvStep.StockByLocation
@@ -155,6 +175,9 @@ private fun decodeInvStep(raw: String): InvStep {
         "adjustments" -> InvStep.Adjustments
         "adjust_form" -> InvStep.AdjustmentForm()
         "adjust" -> InvStep.AdjustmentDetail(parts.getOrNull(1)?.toLongOrNull() ?: 0L)
+        "relocations" -> InvStep.Relocations
+        "relocate_form" -> InvStep.RelocationForm()
+        "relocate" -> InvStep.RelocationDetail(parts.getOrNull(1)?.toLongOrNull() ?: 0L)
         else -> InvStep.Hub
     }
 }
@@ -165,25 +188,48 @@ private val InvStepSaver = Saver<InvStep, String>(
 )
 
 @Composable
-fun InventoryScreen(container: AppContainer, onBack: () -> Unit) {
-    var step by rememberSaveable(stateSaver = InvStepSaver) { mutableStateOf(InvStep.Hub) }
+fun InventoryScreen(
+    container: AppContainer,
+    onBack: () -> Unit,
+    initialPreset: StockLinePreset? = null,
+    initialFlow: String? = null,
+) {
+    val permissions = rememberMobileInventoryPermissions(container)
+    val deepLinkDeniedMessage = when {
+        initialFlow == "adjust" && !permissions.stockAdjustment.create ->
+            "You do not have permission to create stock adjustments."
+        initialFlow == "relocate" && !permissions.stockRelocation.create ->
+            "You do not have permission to create stock relocations."
+        else -> null
+    }
+    if (deepLinkDeniedMessage != null) {
+        ErpScaffold(title = "Inventory", onBack = onBack) {
+            StatusBanner(deepLinkDeniedMessage, isError = true)
+        }
+        return
+    }
+
+    val openingStep = remember(initialPreset, initialFlow) {
+        when (initialFlow) {
+            "adjust" -> initialPreset?.let { adjustmentFormFromPreset(it) } ?: InvStep.AdjustmentForm()
+            "relocate" -> initialPreset?.let { InvStep.RelocationForm(stockLinePresetToRelocationForm(it)) }
+                ?: InvStep.RelocationForm()
+            else -> null
+        }
+    }
+    var step by rememberSaveable(stateSaver = InvStepSaver) {
+        mutableStateOf(openingStep ?: InvStep.Hub)
+    }
 
     when (val current = step) {
         InvStep.Hub -> InventoryHub(
             onBack = onBack,
             onNavigate = { step = it },
+            permissions = permissions,
         )
-        InvStep.Warehouses -> WarehouseListScreen(
+        InvStep.Warehouses -> WarehouseInfoScreen(
             container = container,
             onBack = { step = InvStep.Hub },
-            onCreate = { step = InvStep.WarehouseForm(null) },
-            onEdit = { step = InvStep.WarehouseForm(it) },
-        )
-        is InvStep.WarehouseForm -> WarehouseFormScreen(
-            container = container,
-            warehouseId = current.id,
-            onBack = { step = InvStep.Warehouses },
-            onSaved = { step = InvStep.Warehouses },
         )
         InvStep.Locations -> LocationListScreen(
             container = container,
@@ -205,24 +251,18 @@ fun InventoryScreen(container: AppContainer, onBack: () -> Unit) {
         is InvStep.LocationStock -> LocationStockScreen(
             container = container,
             locationId = current.locationId,
+            permissions = permissions,
             onBack = { step = InvStep.StockByLocation },
-            onAdjust = { productId, productLabel, variationId, variationLabel, locId, qty, batch, rollNumber, isRoll, unit ->
-                step = InvStep.AdjustmentForm(
-                    productId = productId,
-                    productLabel = productLabel,
-                    variationValueId = variationId,
-                    variationLabel = variationLabel,
-                    locationId = locId,
-                    currentQty = qty,
-                    batchNumber = batch,
-                    rollNumber = rollNumber,
-                    isRoll = isRoll,
-                    quantityUnitSuffix = unit,
-                )
+            onStockAction = { preset, flow ->
+                step = when (flow) {
+                    "relocate" -> InvStep.RelocationForm(stockLinePresetToRelocationForm(preset))
+                    else -> adjustmentFormFromPreset(preset)
+                }
             },
         )
         InvStep.Adjustments -> AdjustmentListScreen(
             container = container,
+            canCreate = permissions.stockAdjustment.create,
             onBack = { step = InvStep.Hub },
             onCreate = { step = InvStep.AdjustmentForm() },
             onOpen = { step = InvStep.AdjustmentDetail(it) },
@@ -231,7 +271,11 @@ fun InventoryScreen(container: AppContainer, onBack: () -> Unit) {
             container = container,
             preset = current,
             onBack = {
-                step = if (current.locationId != null) InvStep.LocationStock(current.locationId) else InvStep.Adjustments
+                step = when (current.locationId) {
+                    UNMARKED_STOCK_LOCATION_ID -> InvStep.LocationStock(UNMARKED_STOCK_LOCATION_ID)
+                    null -> InvStep.Adjustments
+                    else -> InvStep.LocationStock(current.locationId)
+                }
             },
             onSaved = { step = InvStep.Adjustments },
         )
@@ -241,17 +285,51 @@ fun InventoryScreen(container: AppContainer, onBack: () -> Unit) {
             onBack = { step = InvStep.Adjustments },
             onChanged = { step = InvStep.Adjustments },
         )
+        InvStep.Relocations -> RelocationListScreen(
+            container = container,
+            canCreate = permissions.stockRelocation.create,
+            onBack = { step = InvStep.Hub },
+            onCreate = { step = InvStep.RelocationForm() },
+            onOpen = { step = InvStep.RelocationDetail(it) },
+        )
+        is InvStep.RelocationForm -> RelocationFormScreen(
+            container = container,
+            preset = current.preset,
+            onBack = {
+                step = when (current.preset.fromLocationId) {
+                    UNMARKED_STOCK_LOCATION_ID -> InvStep.LocationStock(UNMARKED_STOCK_LOCATION_ID)
+                    null -> InvStep.Relocations
+                    else -> InvStep.LocationStock(current.preset.fromLocationId)
+                }
+            },
+            onSaved = { step = InvStep.Relocations },
+        )
+        is InvStep.RelocationDetail -> RelocationDetailScreen(
+            container = container,
+            relocationId = current.id,
+            onBack = { step = InvStep.Relocations },
+            onChanged = { step = InvStep.Relocations },
+        )
     }
 }
 
 @Composable
-private fun InventoryHub(onBack: () -> Unit, onNavigate: (InvStep) -> Unit) {
-    val tiles = listOf(
-        HubTile("Warehouses", "Create, edit & remove warehouses", Icons.Default.Store, InvStep.Warehouses),
-        HubTile("Locations", "Bins, racks & zones per warehouse", Icons.Default.Place, InvStep.Locations),
-        HubTile("Stock by location", "View on-hand qty at each bin", Icons.Default.Inventory, InvStep.StockByLocation),
-        HubTile("Stock adjustments", "Fix wrong quantities on the floor", Icons.Default.Tune, InvStep.Adjustments),
-    )
+private fun InventoryHub(
+    onBack: () -> Unit,
+    onNavigate: (InvStep) -> Unit,
+    permissions: MobileInventoryPermissions,
+) {
+    val tiles = buildList {
+        add(HubTile("Warehouse", "Your current workspace warehouse", Icons.Default.Store, InvStep.Warehouses))
+        add(HubTile("Locations", "Bins, racks & zones per warehouse", Icons.Default.Place, InvStep.Locations))
+        add(HubTile("Stock by location", "View on-hand qty at each bin", Icons.Default.Inventory, InvStep.StockByLocation))
+        if (permissions.stockAdjustment.read) {
+            add(HubTile("Stock adjustments", "Fix wrong quantities on the floor", Icons.Default.Tune, InvStep.Adjustments))
+        }
+        if (permissions.stockRelocation.read) {
+            add(HubTile("Stock relocations", "Move stock between bins", Icons.Default.SwapHoriz, InvStep.Relocations))
+        }
+    }
     ErpScaffold(title = "Inventory", subtitle = "Master data & on-hand stock", onBack = onBack) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(1),
@@ -270,200 +348,124 @@ private fun InventoryHub(onBack: () -> Unit, onNavigate: (InvStep) -> Unit) {
 }
 
 @Composable
-private fun WarehouseListScreen(
+private fun WarehouseInfoScreen(
     container: AppContainer,
     onBack: () -> Unit,
-    onCreate: () -> Unit,
-    onEdit: (Long) -> Unit,
 ) {
-    val sortSearch = rememberTableSortSearch()
-    val liveList = rememberWorkflowLiveList(enabled = true) { page ->
-        val res = container.api.listWarehouses(page = page, perPage = 100)
-        if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-        envelopePage(res, page)
-    }
-    val sortLabels = listOf("Name", "Code", "Address", "Status")
-    val visibleRows = remember(liveList.rows, sortSearch.searchQuery, sortSearch.sortColumnIndex, sortSearch.sortDirection) {
-        liveList.rows.applyCardListSortSearch(
-            sortSearch,
-            listOf(
-                { it.string("name") ?: "" },
-                { it.string("code") ?: "" },
-                { it.string("address") ?: "" },
-                { if (it.boolean("is_active") != false) "active" else "inactive" },
-            ),
-        )
+    val workspaceWhId = container.workspaceContext().warehouseId
+    val workspaceWhName = container.authStore.warehouseNameBlocking()
+    var loading by remember { mutableStateOf(true) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var warehouse by remember { mutableStateOf<JsonObject?>(null) }
+
+    LaunchedEffect(workspaceWhId) {
+        loading = true
+        warehouse = null
+        message = null
+        val whId = workspaceWhId
+        if (whId == null) {
+            message = "No warehouse selected. Choose a workspace from Home or Settings."
+            loading = false
+            return@LaunchedEffect
+        }
+        runCatching {
+            val res = container.api.getWarehouse(whId)
+            if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
+            warehouse = envelopeObject(res) ?: error("Empty warehouse")
+        }.onFailure { message = it.message }
+        loading = false
     }
 
     ErpScaffold(
-        title = "Warehouses",
-        subtitle = "Tap a row to edit",
+        title = warehouse?.string("name") ?: workspaceWhName ?: "Warehouse",
+        subtitle = "Current workspace",
         onBack = onBack,
-        actions = {
-            IconButton(onClick = onCreate) {
-                Icon(Icons.Default.Add, contentDescription = "Add warehouse")
-            }
-        },
     ) {
-        liveList.error?.let { StatusBanner(it, isError = true) }
-        LiveSyncIndicator(liveList.lastUpdatedMs)
-        SortableCardListToolbar(
-            itemCount = visibleRows.size,
-            sortSearch = sortSearch,
-            sortLabels = sortLabels,
-            searchPlaceholder = "Search warehouses…",
-        )
-        visibleRows.forEach { row ->
-            val id = row.long("id") ?: return@forEach
-            ErpCard(onClick = { onEdit(id) }) {
-                Text(row.string("name") ?: "—", fontWeight = FontWeight.SemiBold)
-                Text(row.string("code") ?: "", style = MaterialTheme.typography.bodySmall)
-                Text(
-                    row.string("address") ?: "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                val active = row.boolean("is_active") != false
-                Text(
-                    if (active) "Active" else "Inactive",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                )
+        message?.let { StatusBanner(it, isError = it.contains("Error", true) || it.contains("Failed", true)) }
+        when {
+            loading -> WarehouseInfoSkeleton()
+            warehouse == null && message == null -> {
+                Text("Warehouse not found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            warehouse != null -> {
+                val row = warehouse!!
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    ErpCard {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(row.string("name") ?: "—", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            row.string("code")?.takeIf { it.isNotBlank() }?.let {
+                                Text("Code: $it", style = MaterialTheme.typography.bodySmall)
+                            }
+                            val active = row.boolean("is_active") != false
+                            Text(
+                                if (active) "Active" else "Inactive",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                    ErpCard {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("Details", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            WarehouseInfoRow("Type", row.string("warehouse_type")?.let { DisplayFormat.status(it) })
+                            WarehouseInfoRow("Address", row.string("address"))
+                            WarehouseInfoRow("City / state / country", warehouseRegionLabel(row))
+                            WarehouseInfoRow("Phone", row.string("phone"))
+                            WarehouseInfoRow("Email", row.string("email"))
+                            row.double("capacity")?.let { cap ->
+                                WarehouseInfoRow("Capacity", DisplayFormat.qty(cap))
+                            }
+                            row.string("description")?.takeIf { it.isNotBlank() }?.let {
+                                WarehouseInfoRow("Description", it)
+                            }
+                            row.obj("manager")?.string("name")?.let {
+                                WarehouseInfoRow("Manager", it)
+                            }
+                        }
+                    }
+                    Text(
+                        "Warehouse master data is managed on the web ERP. This device shows your assigned workspace only.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
 }
 
+private fun adjustmentFormFromPreset(preset: StockLinePreset) = InvStep.AdjustmentForm(
+    productId = preset.productId,
+    productLabel = preset.productLabel,
+    variationValueId = preset.variationValueId,
+    variationLabel = preset.variationLabel,
+    locationId = preset.locationId,
+    currentQty = preset.currentQty,
+    batchNumber = preset.batchNumber,
+    rollNumber = preset.rollNumber,
+    isRoll = preset.isRoll,
+    quantityUnitSuffix = preset.quantityUnitSuffix,
+)
+
 @Composable
-private fun WarehouseFormScreen(
-    container: AppContainer,
-    warehouseId: Long?,
-    onBack: () -> Unit,
-    onSaved: () -> Unit,
-) {
-    val scope = rememberCoroutineScope()
-    var loading by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf<String?>(null) }
-    var confirmDelete by remember { mutableStateOf(false) }
-    val workspaceWh = container.workspaceContext().warehouseId
-
-    var name by remember { mutableStateOf("") }
-    var code by remember { mutableStateOf("") }
-    var address by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var capacity by remember { mutableStateOf("") }
-    var warehouseType by remember { mutableStateOf("") }
-    var isActive by remember { mutableStateOf(true) }
-    var cityId by remember { mutableStateOf<Long?>(null) }
-    var stateId by remember { mutableStateOf<Long?>(null) }
-    var countryId by remember { mutableStateOf<Long?>(null) }
-
-    LaunchedEffect(warehouseId) {
-        if (warehouseId == null) return@LaunchedEffect
-        runCatching {
-            val res = container.api.getWarehouse(warehouseId)
-            if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-            val row = envelopeObject(res) ?: error("Empty warehouse")
-            name = row.string("name") ?: ""
-            code = row.string("code") ?: ""
-            address = row.string("address") ?: ""
-            phone = row.string("phone") ?: ""
-            email = row.string("email") ?: ""
-            capacity = row.double("capacity")?.let { DisplayFormat.qty(it) } ?: ""
-            warehouseType = row.string("warehouse_type") ?: ""
-            isActive = row.boolean("is_active") != false
-            cityId = row.long("city_id")
-            stateId = row.long("state_id")
-            countryId = row.long("country_id")
-        }.onFailure { message = it.message }
+private fun WarehouseInfoRow(label: String, value: String?) {
+    if (value.isNullOrBlank()) return
+    Column(Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium)
     }
+}
 
-    fun buildRequest() = WarehouseUpsertRequest(
-        name = name.trim(),
-        code = code.trim(),
-        address = address.trim(),
-        city_id = cityId,
-        state_id = stateId,
-        country_id = countryId,
-        phone = phone.ifBlank { null },
-        email = email.ifBlank { null },
-        capacity = capacity.toDoubleOrNull(),
-        warehouse_type = warehouseType.ifBlank { null },
-        is_active = isActive,
-        copy_address_from_warehouse_id = if (warehouseId == null) workspaceWh else null,
-    )
-
-    ErpScaffold(
-        title = if (warehouseId == null) "New warehouse" else "Edit warehouse",
-        onBack = onBack,
-        actions = {
-            if (warehouseId != null) {
-                IconButton(onClick = { confirmDelete = true }) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete")
-                }
-            }
-        },
-    ) {
-        message?.let { StatusBanner(it, isError = it.contains("Error", true) || it.contains("Failed", true)) }
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(code, { code = it }, label = { Text("Code") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(address, { address = it }, label = { Text("Address") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(phone, { phone = it }, label = { Text("Phone") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(email, { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(capacity, { capacity = it }, label = { Text("Capacity") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(warehouseType, { warehouseType = it }, label = { Text("Type") }, modifier = Modifier.fillMaxWidth())
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Active")
-                Switch(isActive, { isActive = it })
-            }
-            if (warehouseId == null) {
-                Text(
-                    "Address details are copied from your current workspace warehouse.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            ErpPrimaryButton(
-                text = if (warehouseId == null) "Create warehouse" else "Save changes",
-                loading = loading,
-                onClick = {
-                    scope.launchWorkflow({ loading = it }, { message = it }) {
-                        val body = buildRequest()
-                        val res = if (warehouseId == null) {
-                            container.api.createWarehouse(body)
-                        } else {
-                            container.api.updateWarehouse(warehouseId, body)
-                        }
-                        if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-                        onSaved()
-                        null
-                    }
-                },
-            )
-        }
-    }
-
-    if (confirmDelete && warehouseId != null) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete warehouse?") },
-            text = { Text("Only unused warehouses can be deleted.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDelete = false
-                    scope.launchWorkflow({ loading = it }, { message = it }) {
-                        val res = container.api.deleteWarehouse(warehouseId)
-                        if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-                        onSaved()
-                        null
-                    }
-                }) { Text("Delete") }
-            },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
-        )
-    }
+private fun warehouseRegionLabel(row: JsonObject): String? {
+    val parts = listOfNotNull(
+        row.obj("city")?.string("name"),
+        row.obj("state")?.string("name"),
+        row.obj("country")?.string("name"),
+    ).filter { it.isNotBlank() }
+    return parts.joinToString(", ").ifBlank { null }
 }
 
 @Composable
@@ -513,7 +515,10 @@ private fun LocationListScreen(
             sortLabels = sortLabels,
             searchPlaceholder = "Search locations…",
         )
-        visibleRows.forEach { row ->
+        when {
+            liveList.loading && visibleRows.isEmpty() -> WorkflowListCardSkeleton(5)
+            visibleRows.isEmpty() -> Text("No locations yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> visibleRows.forEach { row ->
             val id = row.long("id") ?: return@forEach
             ErpCard(onClick = { onEdit(id) }) {
                 Text(WorkflowJson.locationLabel(row).ifBlank { row.string("zone_name") ?: "—" }, fontWeight = FontWeight.SemiBold)
@@ -529,6 +534,7 @@ private fun LocationListScreen(
                 )
             }
         }
+        }
     }
 }
 
@@ -541,6 +547,7 @@ private fun LocationFormScreen(
 ) {
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(false) }
+    var formLoading by remember { mutableStateOf(locationId != null) }
     var message by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
     val defaultWh = container.workspaceContext().warehouseId
@@ -573,7 +580,17 @@ private fun LocationFormScreen(
     }
 
     LaunchedEffect(locationId) {
-        if (locationId == null) return@LaunchedEffect
+        if (locationId == null) {
+            formLoading = false
+            return@LaunchedEffect
+        }
+        formLoading = true
+        zoneCode = ""
+        zoneName = ""
+        aisle = ""
+        rack = ""
+        shelf = ""
+        bin = ""
         runCatching {
             val res = container.api.getWarehouseLocation(locationId)
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
@@ -591,6 +608,7 @@ private fun LocationFormScreen(
             selectedType = LOCATION_TYPES.find { it.first == locationType } ?: LOCATION_TYPES.first()
             selectedWarehouse = warehouseOptions.firstOrNull { it.id == warehouseId }
         }.onFailure { message = it.message }
+        formLoading = false
     }
 
     fun buildRequest() = WarehouseLocationUpsertRequest(
@@ -618,6 +636,9 @@ private fun LocationFormScreen(
         },
     ) {
         message?.let { StatusBanner(it, isError = true) }
+        if (formLoading) {
+            WorkflowFormSkeleton(fieldCount = 8)
+        } else {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SearchablePickerField(
                 label = "Warehouse",
@@ -659,6 +680,7 @@ private fun LocationFormScreen(
                     }
                 },
             )
+        }
         }
     }
 
@@ -718,6 +740,15 @@ private fun StockLocationPickerScreen(
     onOpen: (Long) -> Unit,
 ) {
     val whId = container.workspaceContext().warehouseId
+    var unmarkedCount by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(whId) {
+        unmarkedCount = null
+        val id = whId ?: return@LaunchedEffect
+        runCatching {
+            val res = container.api.listUnlocatedStocks(id, page = 1, perPage = 1)
+            if (res.isSuccessful) unmarkedCount = envelopeTotal(res)
+        }
+    }
     val sortSearch = rememberTableSortSearch()
     val liveList = rememberWorkflowLiveList(enabled = true) { page ->
         val res = container.api.listWarehouseLocations(warehouseId = whId, page = page, perPage = 200)
@@ -744,11 +775,25 @@ private fun StockLocationPickerScreen(
             sortLabels = sortLabels,
             searchPlaceholder = "Search locations…",
         )
-        visibleRows.forEach { row ->
-            val id = row.long("id") ?: return@forEach
-            ErpCard(onClick = { onOpen(id) }) {
-                Text(WorkflowJson.locationLabel(row), fontWeight = FontWeight.SemiBold)
-                Text(row.string("zone_name") ?: "", style = MaterialTheme.typography.bodySmall)
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (whId != null) {
+                UnmarkedLocationCard(
+                    itemCount = unmarkedCount,
+                    onClick = { onOpen(UNMARKED_STOCK_LOCATION_ID) },
+                )
+            }
+            when {
+                liveList.loading && visibleRows.isEmpty() -> WorkflowListCardSkeleton(5)
+                visibleRows.isEmpty() -> Text("No bin locations found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> visibleRows.forEach { row ->
+                    val id = row.long("id") ?: return@forEach
+                    WarehouseLocationPickerCard(location = row, onClick = { onOpen(id) })
+                }
             }
         }
     }
@@ -758,24 +803,19 @@ private fun StockLocationPickerScreen(
 private fun LocationStockScreen(
     container: AppContainer,
     locationId: Long,
+    permissions: MobileInventoryPermissions,
     onBack: () -> Unit,
-    onAdjust: (
-        Long,
-        String,
-        Long?,
-        String?,
-        Long,
-        Double?,
-        String?,
-        String?,
-        Boolean,
-        String?,
-    ) -> Unit,
+    onStockAction: (StockLinePreset, String) -> Unit,
 ) {
-    var locationLabel by remember { mutableStateOf("Location") }
+    val canAdjust = permissions.stockAdjustment.create
+    val canRelocate = permissions.stockRelocation.create
+    val isUnmarked = locationId == UNMARKED_STOCK_LOCATION_ID
+    var locationLabel by remember(locationId) {
+        mutableStateOf(if (isUnmarked) "Unmarked location" else "Location")
+    }
     val sortSearch = rememberTableSortSearch()
     val liveList = rememberWorkflowLiveList(enabled = true) { page ->
-        if (page == 1) {
+        if (page == 1 && !isUnmarked) {
             runCatching {
                 val locRes = container.api.getWarehouseLocation(locationId)
                 if (locRes.isSuccessful) {
@@ -783,11 +823,17 @@ private fun LocationStockScreen(
                 }
             }
         }
-        val res = container.api.listLocationStocks(locationId, page = page, perPage = 200)
+        val res = if (isUnmarked) {
+            val whId = container.workspaceContext().warehouseId
+                ?: error("No warehouse selected in workspace")
+            container.api.listUnlocatedStocks(whId, page = page, perPage = 200)
+        } else {
+            container.api.listLocationStocks(locationId, page = page, perPage = 200)
+        }
         if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
         envelopePage(res, page)
     }
-    val sortLabels = listOf("Product", "SKU", "Variation", "Qty")
+    val sortLabels = listOf("Product", "SKU", "Variation", "On hand", "Roll #")
     val visibleRows = remember(liveList.rows, sortSearch.searchQuery, sortSearch.sortColumnIndex, sortSearch.sortDirection) {
         liveList.rows.applyCardListSortSearch(
             sortSearch,
@@ -795,14 +841,25 @@ private fun LocationStockScreen(
                 { it.productName() },
                 { it.productSku() },
                 { it.variationLabel() },
-                {
-                    val isRoll = it.isRollStockLine()
-                    val qty = if (isRoll) it.double("roll_length") else it.double("quantity")
-                    DisplayFormat.qty(qty ?: 0.0)
-                },
+                { DisplayFormat.qty(it.onHandQuantity()) },
+                { it.string("roll_number") ?: "" },
             ),
-            extraSearchText = { it.string("roll_number") ?: "" },
+            extraSearchText = { row ->
+                buildString {
+                    append(row.string("batch_number") ?: "")
+                    append(' ')
+                    append(row.rollFillStatus() ?: "")
+                }
+            },
         )
+    }
+    var selectedStock by remember { mutableStateOf<JsonObject?>(null) }
+    var detailOpen by remember { mutableStateOf(false) }
+
+    fun openStockAction(row: JsonObject, flow: String) {
+        val preset = row.toStockLinePreset(if (isUnmarked) UNMARKED_STOCK_LOCATION_ID else locationId)
+            ?: return
+        onStockAction(preset, flow)
     }
 
     ErpScaffold(title = locationLabel, subtitle = "On-hand stock", onBack = onBack) {
@@ -812,50 +869,62 @@ private fun LocationStockScreen(
             itemCount = visibleRows.size,
             sortSearch = sortSearch,
             sortLabels = sortLabels,
-            searchPlaceholder = "Search products…",
+            searchPlaceholder = "Search product, SKU, variation, roll…",
         )
-        if (visibleRows.isEmpty() && !liveList.loading) {
-            Text("No stock at this location.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        visibleRows.forEach { row ->
-            val isRoll = row.isRollStockLine()
-            val qty = if (isRoll) row.double("roll_length") else row.double("quantity")
-            val qtyLabel = formatQtyWithUnit(DisplayFormat.qty(qty ?: 0.0), row.quantityUnitSuffix(), isRoll)
-            val productId = row.long("product_id") ?: return@forEach
-            ErpCard {
-                Text(row.productName(), fontWeight = FontWeight.SemiBold)
-                row.variationLabel().takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall)
-                }
-                row.string("roll_number")?.takeIf { it.isNotBlank() }?.let {
-                    Text("Roll $it", style = MaterialTheme.typography.bodySmall)
-                }
-                Text("On hand: $qtyLabel", style = MaterialTheme.typography.bodyMedium)
-                ErpPrimaryButton(
-                    text = "Adjust stock",
-                    onClick = {
-                        onAdjust(
-                            productId,
-                            row.productName(),
-                            row.long("variation_value_id"),
-                            row.variationLabel().takeIf { it.isNotBlank() },
-                            locationId,
-                            qty,
-                            row.string("batch_number"),
-                            row.string("roll_number"),
-                            isRoll,
-                            row.quantityUnitSuffix(),
-                        )
-                    },
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            when {
+                liveList.loading && visibleRows.isEmpty() -> WorkflowListCardSkeleton(5)
+                visibleRows.isEmpty() -> Text(
+                    if (isUnmarked) "No unlocated stock in this warehouse." else "No stock at this location.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                else -> visibleRows.forEach { row ->
+                    LocationStockLineCard(
+                        stock = row,
+                        onClick = {
+                            selectedStock = row
+                            detailOpen = true
+                        },
+                    )
+                }
             }
         }
     }
+
+    LocationStockDetailSheet(
+        visible = detailOpen,
+        stock = selectedStock,
+        locationLabel = if (isUnmarked) "Unmarked location" else locationLabel,
+        canAdjust = canAdjust,
+        canRelocate = canRelocate,
+        onDismiss = {
+            detailOpen = false
+            selectedStock = null
+        },
+        onAdjust = { row ->
+            detailOpen = false
+            openStockAction(row, "adjust")
+        },
+        onRelocate = if (canRelocate) {
+            { row ->
+                detailOpen = false
+                openStockAction(row, "relocate")
+            }
+        } else {
+            null
+        },
+    )
 }
 
 @Composable
 private fun AdjustmentListScreen(
     container: AppContainer,
+    canCreate: Boolean,
     onBack: () -> Unit,
     onCreate: () -> Unit,
     onOpen: (Long) -> Unit,
@@ -884,7 +953,13 @@ private fun AdjustmentListScreen(
         title = "Adjustments",
         subtitle = "Pending & recent",
         onBack = onBack,
-        actions = { IconButton(onClick = onCreate) { Icon(Icons.Default.Add, contentDescription = "New adjustment") } },
+        actions = {
+            if (canCreate) {
+                IconButton(onClick = onCreate) {
+                    Icon(Icons.Default.Add, contentDescription = "New adjustment")
+                }
+            }
+        },
     ) {
         liveList.error?.let { StatusBanner(it, isError = true) }
         LiveSyncIndicator(liveList.lastUpdatedMs)
@@ -894,7 +969,10 @@ private fun AdjustmentListScreen(
             sortLabels = sortLabels,
             searchPlaceholder = "Search adjustments…",
         )
-        visibleRows.forEach { row ->
+        when {
+            liveList.loading && visibleRows.isEmpty() -> WorkflowListCardSkeleton(5)
+            visibleRows.isEmpty() -> Text("No adjustments yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> visibleRows.forEach { row ->
             val id = row.long("id") ?: return@forEach
             ErpCard(onClick = { onOpen(id) }) {
                 Text(row.string("stock_adjustment_number") ?: "—", fontWeight = FontWeight.SemiBold)
@@ -907,6 +985,7 @@ private fun AdjustmentListScreen(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+        }
         }
     }
 }
@@ -964,7 +1043,7 @@ private fun AdjustmentFormScreen(
             productId = productId,
             warehouseId = whId,
             variationId = selectedVariation?.id,
-            warehouseLocationId = selectedLocation?.id,
+            warehouseLocationId = selectedLocation?.id?.takeUnless { it == UNMARKED_STOCK_LOCATION_ID },
             batchNumber = if (!isRollProduct) batchNumber.ifBlank { null } else null,
             rollNumber = if (isRollProduct) rollNumber.ifBlank { null } else null,
         )
@@ -1034,7 +1113,11 @@ private fun AdjustmentFormScreen(
             if (locRes.isSuccessful) {
                 locationOptions = envelopeList(locRes).mapNotNull(PickerMappers::warehouseLocation)
                 preset.locationId?.let { locId ->
-                    selectedLocation = locationOptions.firstOrNull { it.id == locId }
+                    selectedLocation = if (locId == UNMARKED_STOCK_LOCATION_ID) {
+                        PickerOption(UNMARKED_STOCK_LOCATION_ID, "Unmarked location")
+                    } else {
+                        locationOptions.firstOrNull { it.id == locId }
+                    }
                 }
             }
         }
@@ -1142,7 +1225,7 @@ private fun AdjustmentFormScreen(
                             notes = notes.ifBlank { null },
                             product_id = productId,
                             variation_value_id = selectedVariation?.id,
-                            warehouse_location_id = selectedLocation?.id,
+                            warehouse_location_id = selectedLocation?.id?.takeUnless { it == UNMARKED_STOCK_LOCATION_ID },
                             batch_number = if (!isRollProduct) batchNumber.ifBlank { null } else null,
                             roll_number = if (isRollProduct) rollNumber.ifBlank { null } else null,
                             current_quantity = current,
@@ -1259,20 +1342,21 @@ private fun AdjustmentDetailScreen(
     onChanged: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var loading by remember { mutableStateOf(false) }
+    var actionLoading by remember { mutableStateOf(false) }
+    var detailLoading by remember { mutableStateOf(true) }
     var message by remember { mutableStateOf<String?>(null) }
     var adjustment by remember { mutableStateOf<JsonObject?>(null) }
 
-    fun reload() {
-        scope.launchWorkflow({ loading = it }, { message = it }) {
+    LaunchedEffect(adjustmentId) {
+        adjustment = null
+        detailLoading = true
+        runCatching {
             val res = container.api.getStockAdjustment(adjustmentId)
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
             adjustment = envelopeObject(res)
-            null
-        }
+        }.onFailure { message = it.message }
+        detailLoading = false
     }
-
-    LaunchedEffect(adjustmentId) { reload() }
 
     val status = adjustment?.string("status")
     val number = adjustment?.string("stock_adjustment_number") ?: "Adjustment"
@@ -1280,6 +1364,9 @@ private fun AdjustmentDetailScreen(
 
     ErpScaffold(title = number, subtitle = DisplayFormat.status(status), onBack = onBack) {
         message?.let { StatusBanner(it, isError = it.contains("Error", true) || it.contains("Failed", true)) }
+        if (detailLoading) {
+            AdjustmentDetailSkeleton()
+        } else {
         adjustment?.let { adj ->
             ErpCard {
                 Text("Type: ${DisplayFormat.status(adj.string("adjustment_type"))}")
@@ -1318,10 +1405,10 @@ private fun AdjustmentDetailScreen(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ErpPrimaryButton(
                     text = "Approve",
-                    loading = loading,
+                    loading = actionLoading,
                     modifier = Modifier.weight(1f),
                     onClick = {
-                        scope.launchWorkflow({ loading = it }, { message = it }) {
+                        scope.launchWorkflow({ actionLoading = it }, { message = it }) {
                             val res = container.api.approveStockAdjustment(adjustmentId)
                             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                             onChanged()
@@ -1331,10 +1418,10 @@ private fun AdjustmentDetailScreen(
                 )
                 ErpPrimaryButton(
                     text = "Reject",
-                    loading = loading,
+                    loading = actionLoading,
                     modifier = Modifier.weight(1f),
                     onClick = {
-                        scope.launchWorkflow({ loading = it }, { message = it }) {
+                        scope.launchWorkflow({ actionLoading = it }, { message = it }) {
                             val res = container.api.rejectStockAdjustment(adjustmentId)
                             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                             onChanged()
@@ -1345,9 +1432,9 @@ private fun AdjustmentDetailScreen(
             }
             ErpPrimaryButton(
                 text = "Delete",
-                loading = loading,
+                loading = actionLoading,
                 onClick = {
-                    scope.launchWorkflow({ loading = it }, { message = it }) {
+                    scope.launchWorkflow({ actionLoading = it }, { message = it }) {
                         val res = container.api.deleteStockAdjustment(adjustmentId)
                         if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                         onChanged()
@@ -1355,6 +1442,7 @@ private fun AdjustmentDetailScreen(
                     }
                 },
             )
+        }
         }
     }
 }

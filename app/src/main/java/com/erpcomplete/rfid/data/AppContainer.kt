@@ -161,6 +161,19 @@ class AppContainer(context: Context) {
     val zebraFirmwareRepository = ZebraFirmwareRepository(api)
     val rfidManager = RfidManager(appContext, rfidSettingsStore, zebraFirmwareRepository)
 
+    /** Reload ERP page permissions for mobile inventory (requires workspace headers when set). */
+    suspend fun refreshMobilePermissions(): Boolean {
+        return try {
+            val response = api.currentUser()
+            if (!response.isSuccessful) return false
+            val permissions = response.body()?.mobile_permissions
+            authStore.saveMobileInventoryPermissionsFromJson(permissions)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun ensureTrailingSlash(url: String): String =
         if (url.endsWith("/")) url else "$url/"
 

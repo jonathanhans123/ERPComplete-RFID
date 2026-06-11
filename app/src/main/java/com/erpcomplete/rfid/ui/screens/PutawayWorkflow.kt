@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,7 @@ import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.IndexColumnSpec
 import com.erpcomplete.rfid.ui.components.JsonIndexListTable
+import com.erpcomplete.rfid.ui.components.PutawayDetailSkeleton
 import com.erpcomplete.rfid.ui.components.LiveSyncIndicator
 import com.erpcomplete.rfid.ui.components.PickerOption
 import com.erpcomplete.rfid.ui.components.SearchablePickerField
@@ -125,6 +127,8 @@ fun PutawayScreen(
     val scanColors = rememberScanMatchColors()
 
     var task by remember { mutableStateOf<JsonObject?>(null) }
+    var taskLoading by remember { mutableStateOf(false) }
+    var taskLoadedId by remember { mutableLongStateOf(-1L) }
     val lineEdits = remember { mutableStateListOf<PutawayLineEdit>() }
     var lineHighlights by remember { mutableStateOf<Map<String, ScanMatchStatus>>(emptyMap()) }
     var rfidLocation by remember { mutableStateOf<PickerOption?>(null) }
@@ -216,11 +220,20 @@ fun PutawayScreen(
         }
     }
 
-    fun openTask(id: Long) {
+    fun beginTaskDetail(id: Long) {
         message = null
+        task = null
+        lineEdits.clear()
+        taskLoading = true
+        taskLoadedId = -1L
+        step = PutawayStep.Detail(id)
+    }
+
+    fun openTask(id: Long) {
+        beginTaskDetail(id)
         scope.launchWorkflow(
-            setLoading = { actionLoading = it },
-            onError = { message = it },
+            setLoading = { },
+            onError = { message = it; taskLoading = false },
         ) {
             var res = container.api.getPutawayTask(id)
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
@@ -231,7 +244,8 @@ fun PutawayScreen(
                 body = WorkflowJson.envelopeObject(res)
             }
             applyTask(body ?: error("Empty task"))
-            step = PutawayStep.Detail(id)
+            taskLoadedId = id
+            taskLoading = false
             mergePutawayDraft(id)
             null
         }
@@ -244,11 +258,13 @@ fun PutawayScreen(
     LaunchedEffect((step as? PutawayStep.Detail)?.id) {
         val id = (step as? PutawayStep.Detail)?.id ?: return@LaunchedEffect
         while (true) {
+            kotlinx.coroutines.delay(10_000)
+            if ((step as? PutawayStep.Detail)?.id != id) break
+            if (taskLoading || taskLoadedId != id) continue
             runCatching {
                 val res = container.api.getPutawayTask(id)
                 if (res.isSuccessful) applyTask(WorkflowJson.envelopeObject(res))
             }
-            kotlinx.coroutines.delay(10_000)
         }
     }
 
@@ -296,6 +312,9 @@ fun PutawayScreen(
 
             is PutawayStep.Detail -> {
                 val taskId = current.id
+                if (taskLoading || taskLoadedId != taskId) {
+                    PutawayDetailSkeleton(Modifier.weight(1f))
+                } else {
                 val taskStatus = task?.string("status")
                 val canEditTask = taskStatus in setOf("pending", "in_progress")
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -511,6 +530,7 @@ fun PutawayScreen(
                         )
                     }
                     }
+                }
                 }
             }
         }

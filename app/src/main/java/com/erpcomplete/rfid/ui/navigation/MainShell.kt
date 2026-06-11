@@ -19,6 +19,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.erpcomplete.rfid.data.AppContainer
+import com.erpcomplete.rfid.util.parseInventoryDeepLink
 import com.erpcomplete.rfid.rfid.scanSessionForRoute
 import com.erpcomplete.rfid.ui.components.ErpBottomBar
 import com.erpcomplete.rfid.ui.components.BluetoothDisabledBanner
@@ -106,10 +107,53 @@ fun MainShell(container: AppContainer, rootNavController: NavHostController) {
                     composable(Routes.RFID_SESSION) { CycleCountScreen(container) { innerNav.popBackStack() } }
                     composable(Routes.ENCODE) { EncodeScreen(container) { innerNav.popBackStack() } }
                     composable(Routes.LOCATE) { LocateScreen(container) { innerNav.popBackStack() } }
-                    composable(Routes.INVENTORY) { InventoryScreen(container) { innerNav.popBackStack() } }
+                    composable(
+                        route = "${Routes.INVENTORY}?flow={flow}&productId={productId}&variationId={variationId}&locationId={locationId}&currentQty={currentQty}&isRoll={isRoll}&productName={productName}&variationName={variationName}&batchNumber={batchNumber}&rollNumber={rollNumber}&unit={unit}",
+                        arguments = listOf(
+                            navArgument("flow") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("productId") { type = NavType.LongType; defaultValue = -1L },
+                            navArgument("variationId") { type = NavType.LongType; defaultValue = -1L },
+                            navArgument("locationId") { type = NavType.LongType; defaultValue = 0L },
+                            navArgument("currentQty") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("isRoll") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("productName") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("variationName") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("batchNumber") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("rollNumber") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("unit") { type = NavType.StringType; defaultValue = "" },
+                        ),
+                    ) { entry ->
+                        val args = entry.arguments
+                        val flow = args?.getString("flow")
+                        val preset = parseInventoryDeepLink(
+                            flow = flow,
+                            productId = args?.getLong("productId") ?: -1L,
+                            variationId = args?.getLong("variationId") ?: -1L,
+                            locationId = args?.getLong("locationId") ?: 0L,
+                            currentQty = args?.getString("currentQty")?.toDoubleOrNull(),
+                            isRoll = args?.getString("isRoll") == "1",
+                            productName = args?.getString("productName"),
+                            variationName = args?.getString("variationName"),
+                            batchNumber = args?.getString("batchNumber"),
+                            rollNumber = args?.getString("rollNumber"),
+                            unit = args?.getString("unit"),
+                        )
+                        InventoryScreen(
+                            container = container,
+                            onBack = { innerNav.popBackStack() },
+                            initialPreset = preset,
+                            initialFlow = flow,
+                        )
+                    }
+                    composable(Routes.INVENTORY) {
+                        InventoryScreen(
+                            container = container,
+                            onBack = { innerNav.popBackStack() },
+                        )
+                    }
                 }
                 navigation(route = Routes.TAB_SEARCH, startDestination = Routes.SEARCH) {
-                    composable(Routes.SEARCH) { SearchScreen(container) }
+                    composable(Routes.SEARCH) { SearchScreen(container, innerNav) }
                 }
                 navigation(route = Routes.TAB_SETTINGS, startDestination = Routes.SETTINGS) {
                     composable(Routes.SETTINGS) { SettingsScreen(container, rootNavController) }

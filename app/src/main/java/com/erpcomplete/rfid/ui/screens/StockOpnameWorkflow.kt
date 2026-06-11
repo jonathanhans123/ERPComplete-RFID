@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +31,7 @@ import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.IndexColumnSpec
 import com.erpcomplete.rfid.ui.components.JsonIndexListTable
+import com.erpcomplete.rfid.ui.components.StockOpnameDetailSkeleton
 import com.erpcomplete.rfid.ui.components.LiveSyncIndicator
 import com.erpcomplete.rfid.ui.components.StatusBanner
 import com.erpcomplete.rfid.ui.components.TableCell
@@ -120,6 +122,8 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
     var lineHighlights by remember { mutableStateOf<Map<String, ScanMatchStatus>>(emptyMap()) }
 
     var opname by remember { mutableStateOf<JsonObject?>(null) }
+    var countLoading by remember { mutableStateOf(false) }
+    var countLoadedId by remember { mutableLongStateOf(-1L) }
     val lineEdits = remember { mutableStateListOf<OpnameLineEdit>() }
     var createType by remember { mutableStateOf("cycle_count") }
     var createNotes by remember { mutableStateOf("") }
@@ -197,16 +201,26 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
         }
     }
 
-    fun openCount(id: Long) {
+    fun beginCount(id: Long) {
         message = null
+        opname = null
+        lineEdits.clear()
+        countLoading = true
+        countLoadedId = -1L
+        step = OpnameStep.Count(id)
+    }
+
+    fun openCount(id: Long) {
+        beginCount(id)
         scope.launchWorkflow(
-            setLoading = { actionLoading = it },
-            onError = { message = it },
+            setLoading = { },
+            onError = { message = it; countLoading = false },
         ) {
             val res = container.api.startStockOpnameCheck(id)
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
             applyOpname(WorkflowJson.envelopeObject(res) ?: error("Empty opname"))
-            step = OpnameStep.Count(id)
+            countLoadedId = id
+            countLoading = false
             mergeOpnameDraft(id)
             null
         }
@@ -310,6 +324,8 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                                 val check = container.api.startStockOpnameCheck(id)
                                 if (!check.isSuccessful) error(ApiErrorParser.httpMessage(check, authenticated = true))
                                 applyOpname(WorkflowJson.envelopeObject(check) ?: error("Empty check"))
+                                countLoadedId = id
+                                countLoading = false
                                 step = OpnameStep.Count(id)
                                 liveList.refresh()
                                 null
@@ -321,6 +337,9 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
 
             is OpnameStep.Count -> {
                 val opnameId = current.id
+                if (countLoading || countLoadedId != opnameId) {
+                    StockOpnameDetailSkeleton(Modifier.weight(1f))
+                } else {
                 val status = opname?.string("status")
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
@@ -523,6 +542,7 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                             },
                         )
                     }
+                }
                 }
             }
         }

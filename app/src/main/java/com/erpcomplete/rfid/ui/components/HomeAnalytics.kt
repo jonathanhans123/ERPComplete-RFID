@@ -186,6 +186,9 @@ fun HomeAnalyticsSection(
         state.error?.let { msg ->
             Text(msg, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
         }
+        if (state.loading && state.snapshot.lastUpdatedMs == null) {
+            HomeMetricsSkeleton()
+        } else {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             HomeMetricCard(
                 label = "Putaway",
@@ -217,6 +220,7 @@ fun HomeAnalyticsSection(
                 modifier = Modifier.weight(1f),
                 onClick = onReceiveClick,
             )
+        }
         }
         ErpCard {
             Text("Session", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)

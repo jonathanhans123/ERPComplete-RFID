@@ -33,6 +33,7 @@ data class ScanResolveEntry(
     val rollLength: Double? = null,
     val quantityUnitSuffix: String? = null,
     val isRoll: Boolean = false,
+    val detailInfo: Map<String, Any?>? = null,
 )
 
 @Composable
@@ -102,6 +103,7 @@ private fun entryFromResolveInfo(info: Map<String, Any?>?): ScanResolveEntry =
         rollLength = resolveRollLength(info),
         quantityUnitSuffix = resolveQuantityUnitSuffix(info),
         isRoll = resolveIsRoll(info),
+        detailInfo = info,
     )
 
 private fun resolveProductId(info: Map<String, Any?>?): Long? =

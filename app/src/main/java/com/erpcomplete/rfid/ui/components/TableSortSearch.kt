@@ -147,15 +147,12 @@ fun JsonIndexListTable(
         }
         when {
             loading && visible.isEmpty() -> {
-                Box(
-                    Modifier
+                WorkflowListCardSkeleton(
+                    count = 5,
+                    modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                        .fillMaxWidth(),
+                )
             }
             visible.isEmpty() -> {
                 Box(
@@ -286,11 +283,35 @@ fun SortableCardListToolbar(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { sortMenuOpen = true }) {
-                    Text(
-                        "Sort: ${sortLabels.getOrNull(sortSearch.sortColumnIndex) ?: "—"}",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
+                Box {
+                    TextButton(onClick = { sortMenuOpen = true }) {
+                        Text(
+                            "Sort: ${sortLabels.getOrNull(sortSearch.sortColumnIndex) ?: "—"}",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = sortMenuOpen,
+                        onDismissRequest = { sortMenuOpen = false },
+                    ) {
+                        sortLabels.forEachIndexed { index, label ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    if (sortSearch.sortColumnIndex == index) {
+                                        sortSearch.sortDirection = when (sortSearch.sortDirection) {
+                                            SortDirection.ASC -> SortDirection.DESC
+                                            SortDirection.DESC -> SortDirection.ASC
+                                        }
+                                    } else {
+                                        sortSearch.sortColumnIndex = index
+                                        sortSearch.sortDirection = SortDirection.ASC
+                                    }
+                                    sortMenuOpen = false
+                                },
+                            )
+                        }
+                    }
                 }
                 TextButton(
                     onClick = {
@@ -306,25 +327,6 @@ fun SortableCardListToolbar(
                             SortDirection.DESC -> Icons.Default.ArrowDownward
                         },
                         contentDescription = "Toggle sort direction",
-                    )
-                }
-            }
-            DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
-                sortLabels.forEachIndexed { index, label ->
-                    DropdownMenuItem(
-                        text = { Text(label) },
-                        onClick = {
-                            if (sortSearch.sortColumnIndex == index) {
-                                sortSearch.sortDirection = when (sortSearch.sortDirection) {
-                                    SortDirection.ASC -> SortDirection.DESC
-                                    SortDirection.DESC -> SortDirection.ASC
-                                }
-                            } else {
-                                sortSearch.sortColumnIndex = index
-                                sortSearch.sortDirection = SortDirection.ASC
-                            }
-                            sortMenuOpen = false
-                        },
                     )
                 }
             }

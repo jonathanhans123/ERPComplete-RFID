@@ -44,9 +44,16 @@ import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.ScanResolveStatus
 import com.erpcomplete.rfid.ui.components.StatusBanner
+import com.erpcomplete.rfid.ui.components.TagInfoDetailContent
 import com.erpcomplete.rfid.ui.components.TagRegistrationSheet
 import com.erpcomplete.rfid.ui.components.rememberScanResolver
+import com.erpcomplete.rfid.ui.permissions.rememberMobileInventoryPermissions
 import com.erpcomplete.rfid.ui.components.scanResolveLabel
+import com.erpcomplete.rfid.ui.navigation.navigateWorkflow
+import com.erpcomplete.rfid.util.buildInventoryDeepLinkUri
+import com.erpcomplete.rfid.util.toStockLinePreset
+import androidx.compose.material3.OutlinedButton
+import androidx.navigation.NavHostController
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -54,7 +61,8 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SearchScreen(container: AppContainer) {
+fun SearchScreen(container: AppContainer, innerNav: NavHostController) {
+    val permissions = rememberMobileInventoryPermissions(container)
     val rfid = container.rfidManager
     val scans by rfid.searchScans.collectAsState()
     val isConnected by rfid.isDeviceConnected.collectAsState()
@@ -211,7 +219,34 @@ fun SearchScreen(container: AppContainer) {
                             selectedRow = null
                         })
                     }
-                    detailInfo != null -> TagDetailContent(detailInfo!!)
+                    detailInfo != null -> {
+                        TagInfoDetailContent(detailInfo!!)
+                        val preset = detailInfo!!.toStockLinePreset()
+                        if (preset != null && (permissions.stockAdjustment.create || permissions.stockRelocation.create)) {
+                            Spacer(Modifier.height(16.dp))
+                            if (permissions.stockAdjustment.create) {
+                                ErpPrimaryButton(
+                                    text = "Adjust stock",
+                                    onClick = {
+                                        selectedRow = null
+                                        innerNav.navigateWorkflow(buildInventoryDeepLinkUri("adjust", preset))
+                                    },
+                                )
+                                Spacer(Modifier.height(8.dp))
+                            }
+                            if (permissions.stockRelocation.create) {
+                                OutlinedButton(
+                                    onClick = {
+                                        selectedRow = null
+                                        innerNav.navigateWorkflow(buildInventoryDeepLinkUri("relocate", preset))
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text("Relocate to another bin")
+                                }
+                            }
+                        }
+                    }
                 }
                 Spacer(Modifier.height(32.dp))
             }
@@ -245,96 +280,8 @@ private fun SearchTableRow(
 }
 
 @Composable
-private fun TagDetailContent(info: Map<String, Any?>) {
-    val product = info.nestedMap("product")
-    val variation = info.nestedMap("variation")
-    val stock = info.nestedMap("stock")
-    val warehouse = info.nestedMap("warehouse")
-    val location = info.nestedMap("warehouse_location")
-    val descriptors = info.listOfMaps("variation_descriptors")
-    val outputLabel = info.nestedMap("output_label")
-
-    DetailSection("Product") {
-        DetailLine("Name", product?.string("name"))
-        DetailLine("SKU", product?.string("sku"))
-    }
-
-    if (variation != null || descriptors.isNotEmpty()) {
-        DetailSection("Variation") {
-            DetailLine("Name", variation?.string("name") ?: variation?.string("value"))
-            DetailLine("SKU", variation?.string("sku"))
-            descriptors.forEach { d ->
-                DetailLine(d.string("name") ?: "Option", d.string("value"))
-            }
-        }
-    }
-
-    if (stock != null) {
-        DetailSection("Stock") {
-            val isRoll = info["product_type"]?.toString() == "roll"
-                || !stock.string("roll_number").isNullOrBlank()
-                || (stock["roll_length"]?.toString()?.toDoubleOrNull() ?: 0.0) > 0.0
-            if (isRoll) {
-                DetailLine("Roll #", stock.string("roll_number"))
-                DetailLine("Roll length", stock["roll_length"]?.toString())
-            } else {
-                DetailLine("Quantity", stock["quantity"]?.toString())
-            }
-            DetailLine("Batch", stock.string("batch_number"))
-            DetailLine("Type", stock.string("stock_type"))
-        }
-    }
-
-    DetailSection("Location") {
-        DetailLine("Warehouse", warehouse?.string("name"))
-        DetailLine("Location", location?.string("name"))
-        DetailLine("Location barcode", location?.string("barcode"))
-    }
-
-    if (outputLabel != null) {
-        DetailSection("Label") {
-            DetailLine("Barcode", outputLabel.string("barcode_value"))
-            DetailLine("Status", outputLabel.string("status"))
-        }
-    }
-
-    DetailSection("Tag") {
-        DetailLine("EPC", info.string("epc"))
-        DetailLine("Status", info.string("status"))
-    }
-}
-
-@Composable
-private fun DetailSection(title: String, content: @Composable () -> Unit) {
-    Spacer(Modifier.height(12.dp))
-    Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-    Spacer(Modifier.height(6.dp))
-    ErpCard { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { content() } }
-}
-
-@Composable
-private fun DetailLine(label: String, value: String?) {
-    if (value.isNullOrBlank()) return
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-    }
-}
-
-@Composable
 private fun searchTableHeaderStyle() = MaterialTheme.typography.labelMedium.copy(
     fontWeight = FontWeight.SemiBold,
     color = MaterialTheme.colorScheme.onSurfaceVariant,
 )
 
-@Suppress("UNCHECKED_CAST")
-private fun Map<String, Any?>.nestedMap(key: String): Map<String, Any?>? = this[key] as? Map<String, Any?>
-
-@Suppress("UNCHECKED_CAST")
-private fun Map<String, Any?>.listOfMaps(key: String): List<Map<String, Any?>> {
-    val raw = this[key] as? List<*> ?: return emptyList()
-    return raw.mapNotNull { it as? Map<String, Any?> }
-}
-
-private fun Map<String, Any?>?.string(key: String): String? =
-    this?.get(key)?.toString()?.takeIf { it.isNotBlank() }

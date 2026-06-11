@@ -38,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +62,7 @@ import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.IndexColumnSpec
 import com.erpcomplete.rfid.ui.components.JsonIndexListTable
+import com.erpcomplete.rfid.ui.components.GoodsReceiptDetailSkeleton
 import com.erpcomplete.rfid.ui.components.LiveSyncIndicator
 import com.erpcomplete.rfid.ui.components.PickerOption
 import com.erpcomplete.rfid.ui.components.SearchablePickerField
@@ -440,6 +442,8 @@ fun ReceiveScreen(
     val scanColors = rememberScanMatchColors()
 
     var detail by remember { mutableStateOf<JsonObject?>(null) }
+    var detailLoading by remember { mutableStateOf(false) }
+    var detailLoadedId by remember { mutableLongStateOf(-1L) }
     var createTab by remember { mutableIntStateOf(0) }
     var sourceType by remember { mutableStateOf("purchase_order") }
     var selectedSource by remember { mutableStateOf<PickerOption?>(null) }
@@ -530,41 +534,66 @@ fun ReceiveScreen(
         }
     }
 
-    LaunchedEffect((step as? GrStep.Detail)?.id) {
-        val id = (step as? GrStep.Detail)?.id ?: return@LaunchedEffect
-        runCatching {
-            createdPutawayTaskId = container.resolvePutawayTaskId(id, detail)
-        }
-        while (true) {
-            runCatching {
-                val res = container.api.getGoodsReceipt(id)
-                if (res.isSuccessful) {
-                    val gr = WorkflowJson.envelopeObject(res)
-                    detail = gr
-                    createdPutawayTaskId = container.resolvePutawayTaskId(id, gr)
-                }
-            }
-            kotlinx.coroutines.delay(10_000)
-        }
+    suspend fun applyGrDetail(gr: JsonObject, id: Long) {
+        detail = gr
+        detailLoadedId = id
+        detailLoading = false
+        val header = gr.toGrDetailHeaderEdit()
+        detailHeaderDate = header.receiptDate
+        detailHeaderDeliveryNote = header.deliveryNote
+        detailHeaderVehicle = header.vehicleNumber
+        detailHeaderDriver = header.driverName
+        detailHeaderNotes = header.notes
+        detailHeaderReceivedBy = gr.detailReceivedByPicker()
+        createdPutawayTaskId = container.resolvePutawayTaskId(id, gr)
+    }
+
+    fun beginGrDetail(id: Long) {
+        message = null
+        detail = null
+        detailLineEdits.clear()
+        detailEditTab = 0
+        detailLoading = true
+        detailLoadedId = -1L
+        step = GrStep.Detail(id)
     }
 
     LaunchedEffect((step as? GrStep.Detail)?.id) {
         val id = (step as? GrStep.Detail)?.id ?: return@LaunchedEffect
-        detailLineEdits.clear()
-        detailEditTab = 0
-        runCatching {
-            val res = container.api.getGoodsReceipt(id)
-            if (!res.isSuccessful) return@runCatching
-            val gr = WorkflowJson.envelopeObject(res) ?: return@runCatching
-            detail = gr
-            val header = gr.toGrDetailHeaderEdit()
-            detailHeaderDate = header.receiptDate
-            detailHeaderDeliveryNote = header.deliveryNote
-            detailHeaderVehicle = header.vehicleNumber
-            detailHeaderDriver = header.driverName
-            detailHeaderNotes = header.notes
-            detailHeaderReceivedBy = gr.detailReceivedByPicker()
-            createdPutawayTaskId = container.resolvePutawayTaskId(id, gr)
+        if (detailLoadedId != id) {
+            detailLoading = true
+            detail = null
+            detailLineEdits.clear()
+            runCatching {
+                val res = container.api.getGoodsReceipt(id)
+                if (!res.isSuccessful) {
+                    message = ApiErrorParser.httpMessage(res)
+                    detailLoading = false
+                    return@LaunchedEffect
+                }
+                val gr = WorkflowJson.envelopeObject(res) ?: error("Empty goods receipt")
+                applyGrDetail(gr, id)
+            }.onFailure { e ->
+                if (!e.isBenignCancellation()) {
+                    message = e.message?.takeIf { it.isNotBlank() } ?: "Could not load receipt"
+                }
+                detailLoading = false
+            }
+        }
+        while (true) {
+            kotlinx.coroutines.delay(10_000)
+            if ((step as? GrStep.Detail)?.id != id) break
+            if (detailLoading || detailLoadedId != id) continue
+            runCatching {
+                val res = container.api.getGoodsReceipt(id)
+                if (res.isSuccessful) {
+                    val gr = WorkflowJson.envelopeObject(res)
+                    if (gr != null) {
+                        detail = gr
+                        createdPutawayTaskId = container.resolvePutawayTaskId(id, gr)
+                    }
+                }
+            }
         }
     }
 
@@ -791,10 +820,7 @@ fun ReceiveScreen(
                     totalCount = liveList.totalCount,
                     onLoadMore = liveList.loadMore,
                     onRowClick = { gr ->
-                        gr.long("id")?.let { id ->
-                            message = null
-                            step = GrStep.Detail(id)
-                        }
+                        gr.long("id")?.let(::beginGrDetail)
                     },
                     modifier = Modifier.weight(1f),
                 )
@@ -1097,8 +1123,8 @@ fun ReceiveScreen(
                                     val created = WorkflowJson.envelopeObject(res)
                                         ?: error("Created but empty response")
                                     val newId = created.long("id") ?: error("Created but no ID returned")
-                                    createdPutawayTaskId = container.resolvePutawayTaskId(newId, created)
-                                    detail = WorkflowJson.envelopeObject(container.api.getGoodsReceipt(newId)) ?: created
+                                    val loaded = WorkflowJson.envelopeObject(container.api.getGoodsReceipt(newId)) ?: created
+                                    applyGrDetail(loaded, newId)
                                     step = GrStep.Detail(newId)
                                     liveList.refresh()
                                     val putawayNum = createdPutawayTaskId?.let { taskId ->
@@ -1117,6 +1143,9 @@ fun ReceiveScreen(
 
             is GrStep.Detail -> {
                 val grId = current.id
+                if (detailLoading || detailLoadedId != grId) {
+                    GoodsReceiptDetailSkeleton(Modifier.weight(1f))
+                } else {
                 val gr = detail
                 val putawayTaskId = createdPutawayTaskId ?: gr?.firstPutawayTaskId()
                 val receiptStatus = gr?.string("receipt_status") ?: gr?.string("status")
@@ -1479,6 +1508,7 @@ fun ReceiveScreen(
                         }
                     })
                     }
+                }
                 }
             }
         }

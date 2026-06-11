@@ -48,6 +48,8 @@ import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.LocateProximityMeter
 import com.erpcomplete.rfid.ui.components.PickerOption
 import com.erpcomplete.rfid.ui.components.ScanResolveEntry
+import com.erpcomplete.rfid.ui.components.ScanResolveStatus
+import com.erpcomplete.rfid.ui.components.TagInfoDetailContent
 import com.erpcomplete.rfid.ui.components.SearchablePickerField
 import com.erpcomplete.rfid.ui.components.SearchablePickerSheet
 import com.erpcomplete.rfid.ui.components.StatusBanner
@@ -92,9 +94,18 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
     var message by remember { mutableStateOf<String?>(null) }
 
     val scope = rememberCoroutineScope()
-    val resolveMap = rememberScanResolver(container.api, discoveryTags.map { it.epc })
+    val resolveCodes = remember(discoveryTags, selectedEpc, manualEpc, productTags) {
+        buildSet {
+            discoveryTags.forEach { add(it.epc) }
+            productTags.forEach { add(it.epc) }
+            selectedEpc?.let { add(it) }
+            manualEpc.trim().uppercase().takeIf { it.isNotBlank() }?.let { add(it) }
+        }.toList()
+    }
+    val resolveMap = rememberScanResolver(container.api, resolveCodes)
 
     val activeEpc = selectedEpc ?: manualEpc.trim().uppercase().takeIf { it.isNotBlank() }
+    val activeDetail = activeEpc?.uppercase()?.let { resolveMap[it]?.detailInfo }
 
     LaunchedEffect(activeEpc) {
         container.rfidManager.setLocateTarget(activeEpc)
@@ -244,7 +255,7 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
                             LocateTagRow(
                                 epc = tag.epc,
                                 entry = resolveMap[tag.epc.uppercase()] ?: ScanResolveEntry(
-                                    com.erpcomplete.rfid.ui.components.ScanResolveStatus.PENDING,
+                                    ScanResolveStatus.PENDING,
                                 ),
                                 rssi = tag.rssi,
                             )
@@ -336,6 +347,9 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
                         )
                     }
                     TextButton(onClick = { clearSelection() }) { Text("Clear") }
+                }
+                if (activeDetail != null && resolveMap[activeEpc.uppercase()]?.status == ScanResolveStatus.REGISTERED) {
+                    TagInfoDetailContent(activeDetail, compact = true)
                 }
                 Text(
                     "Hold top trigger and sweep · release to stop · green = closer",

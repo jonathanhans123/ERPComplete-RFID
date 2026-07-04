@@ -29,10 +29,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.ui.navigation.Routes
 
 private const val BAR_HEIGHT = 56
@@ -41,7 +43,7 @@ private const val FAB_LIFT = (FAB_SIZE - 24) / 2
 
 private data class NavItem(
     val route: String,
-    val label: String,
+    val labelRes: Int,
     val icon: ImageVector,
     val isCenter: Boolean = false,
 )
@@ -53,11 +55,11 @@ fun ErpBottomBar(
     modifier: Modifier = Modifier,
 ) {
     val items = listOf(
-        NavItem(Routes.HOME, "Home", Icons.Default.Home),
-        NavItem(Routes.CONNECT, "Connect", Icons.Default.BluetoothConnected),
-        NavItem(Routes.OPERATIONS, "Operations", Icons.Default.Warehouse, isCenter = true),
-        NavItem(Routes.SEARCH, "Search", Icons.Default.Search),
-        NavItem(Routes.SETTINGS, "Settings", Icons.Default.Settings),
+        NavItem(Routes.HOME, R.string.nav_home, Icons.Default.Home),
+        NavItem(Routes.CONNECT, R.string.nav_connect, Icons.Default.BluetoothConnected),
+        NavItem(Routes.OPERATIONS, R.string.nav_operations, Icons.Default.Warehouse, isCenter = true),
+        NavItem(Routes.SEARCH, R.string.nav_search, Icons.Default.Search),
+        NavItem(Routes.SETTINGS, R.string.nav_settings, Icons.Default.Settings),
     )
 
     val centerItem = items.first { it.isCenter }
@@ -72,6 +74,7 @@ fun ErpBottomBar(
     } else {
         MaterialTheme.colorScheme.inverseOnSurface
     }
+    val centerLabel = stringResource(centerItem.labelRes)
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -120,7 +123,7 @@ fun ErpBottomBar(
                 pressedElevation = 8.dp,
             ),
         ) {
-            Icon(centerItem.icon, contentDescription = centerItem.label, modifier = Modifier.size(24.dp))
+            Icon(centerItem.icon, contentDescription = centerLabel, modifier = Modifier.size(24.dp))
         }
     }
 }
@@ -132,6 +135,7 @@ private fun SideNavSlot(
     onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val label = stringResource(item.labelRes)
     val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Column(
         modifier = modifier
@@ -147,10 +151,10 @@ private fun SideNavSlot(
             modifier = Modifier.height(28.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(item.icon, contentDescription = item.label, tint = tint, modifier = Modifier.size(24.dp))
+            Icon(item.icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
         }
         Text(
-            item.label,
+            label,
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
             color = tint,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,

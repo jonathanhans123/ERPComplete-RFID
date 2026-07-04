@@ -16,7 +16,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        buildConfigField("String", "API_BASE_URL", "\"https://your-erp-host.example/api/v1\"")
+        buildConfigField("String", "API_BASE_URL", "\"https://srv1804550.hstgr.cloud/api/v1\"")
     }
 
     flavorDimensions += "target"
@@ -27,7 +27,7 @@ android {
         }
         create("device") {
             dimension = "target"
-            buildConfigField("String", "API_BASE_URL", "\"http://192.168.10.49:8000/api/v1\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://srv1804550.hstgr.cloud/api/v1\"")
         }
     }
 
@@ -64,6 +64,7 @@ dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
     implementation(composeBom)
 
+    implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")

@@ -1,5 +1,6 @@
 package com.erpcomplete.rfid.util
 
+import com.erpcomplete.rfid.util.ApiErrorParser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -29,7 +30,7 @@ fun CoroutineScope.launchWorkflow(
         throw e
     } catch (e: Exception) {
         if (!e.isBenignCancellation()) {
-            onError(e.message?.takeIf { it.isNotBlank() } ?: "Something went wrong")
+            onError(e.message?.takeIf { it.isNotBlank() } ?: ApiErrorParser.genericError())
         }
     } finally {
         setLoading?.invoke(false)

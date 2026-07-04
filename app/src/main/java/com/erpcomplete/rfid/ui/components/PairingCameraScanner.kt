@@ -30,14 +30,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.erpcomplete.rfid.R
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.erpcomplete.rfid.util.PhoneBluetooth
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
+
+enum class PairingScanMode {
+    /** Scan reader QR / pairing barcode and return raw payload. */
+    READER_CONNECT,
+    /** Scan any barcode that contains a Bluetooth MAC address. */
+    MAC_ADDRESS,
+}
 
 @Composable
 fun PairingCameraScanner(
@@ -45,6 +55,8 @@ fun PairingCameraScanner(
     scanGeneration: Int = 0,
     isConnecting: Boolean = false,
     modifier: Modifier = Modifier,
+    scanMode: PairingScanMode = PairingScanMode.READER_CONNECT,
+    onMacCaptured: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -87,7 +99,7 @@ fun PairingCameraScanner(
     ) {
         if (!hasCameraPermission) {
             Text(
-                "Camera permission is required to scan the reader QR code.",
+                stringResource(R.string.pairing_camera_permission),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -98,7 +110,7 @@ fun PairingCameraScanner(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
                 Text(
-                    "Connecting to reader…",
+                    stringResource(R.string.pairing_connecting),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 12.dp),
@@ -150,11 +162,23 @@ fun PairingCameraScanner(
                                     for (barcode in barcodes) {
                                         val value = barcode.rawValue?.trim().orEmpty()
                                         if (value.isBlank()) continue
-                                        if (!isPairingBarcode(barcode, value)) continue
-                                        scanned = true
-                                        cameraProvider.unbindAll()
-                                        onBarcodeScanned(value)
-                                        break
+                                        when (scanMode) {
+                                            PairingScanMode.MAC_ADDRESS -> {
+                                                val mac = PhoneBluetooth.parseMacInput(value)
+                                                if (mac == null) continue
+                                                scanned = true
+                                                cameraProvider.unbindAll()
+                                                onMacCaptured?.invoke(mac)
+                                                break
+                                            }
+                                            PairingScanMode.READER_CONNECT -> {
+                                                if (!isPairingBarcode(barcode, value)) continue
+                                                scanned = true
+                                                cameraProvider.unbindAll()
+                                                onBarcodeScanned(value)
+                                                break
+                                            }
+                                        }
                                     }
                                 }
                                 .addOnCompleteListener { imageProxy.close() }

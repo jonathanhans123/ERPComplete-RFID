@@ -24,6 +24,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.erpcomplete.rfid.R
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.erpcomplete.rfid.data.AppContainer
@@ -62,6 +65,7 @@ fun HomeScreen(
     val readerName by container.rfidManager.connectionState.collectAsState()
     val diagnostics by container.rfidManager.diagnostics.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var confirmWorkspaceChange by remember { mutableStateOf(false) }
 
     LaunchedEffect(isConnected) {
@@ -81,8 +85,8 @@ fun HomeScreen(
     if (confirmWorkspaceChange) {
         AlertDialog(
             onDismissRequest = { confirmWorkspaceChange = false },
-            title = { Text("Change workspace?") },
-            text = { Text("Unsaved work on open screens may be lost. Continue to pick another warehouse?") },
+            title = { Text(stringResource(R.string.workspace_change_title)) },
+            text = { Text(stringResource(R.string.workspace_change_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -94,20 +98,22 @@ fun HomeScreen(
                             }
                         }
                     },
-                ) { Text("Change") }
+                ) { Text(stringResource(R.string.action_change)) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmWorkspaceChange = false }) { Text("Cancel") }
+                TextButton(onClick = { confirmWorkspaceChange = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
             },
         )
     }
 
     ErpScaffold(
-        title = "Dashboard",
+        title = stringResource(R.string.home_title),
         subtitle = warehouseName ?: buName,
         actions = {
             IconButton(onClick = analytics.refresh) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh analytics")
+                Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.cd_refresh_analytics))
             }
             SyncStatusChip(pending)
         },
@@ -118,8 +124,11 @@ fun HomeScreen(
         ) {
             BluetoothDisabledBanner(compact = true)
             ErpGradientHeader(
-                title = "Hello, ${userName?.substringBefore(' ') ?: "Operator"}",
-                subtitle = "Warehouse RFID — live queue & device status",
+                title = stringResource(
+                    R.string.home_greeting,
+                    userName?.substringBefore(' ') ?: stringResource(R.string.home_greeting_fallback_name),
+                ),
+                subtitle = stringResource(R.string.home_header_subtitle),
             )
 
             WorkspaceContextCard(
@@ -142,20 +151,20 @@ fun HomeScreen(
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     ErpCard(Modifier.weight(1f)) {
-                        Text("Reader", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.home_reader_label), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
-                            if (isConnected) "Online" else "Offline",
+                            if (isConnected) stringResource(R.string.status_online) else stringResource(R.string.status_offline),
                             style = MaterialTheme.typography.headlineMedium,
                             color = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     ErpCard(Modifier.weight(1f)) {
-                        Text("Device", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.home_device_label), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             when (val s = readerName) {
                                 is RfidConnectionState.Connected -> s.readerName
-                                is RfidConnectionState.Pairing -> "Pairing…"
-                                else -> "Not connected"
+                                is RfidConnectionState.Pairing -> stringResource(R.string.status_pairing)
+                                else -> stringResource(R.string.status_not_connected)
                             },
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 2,
@@ -165,7 +174,7 @@ fun HomeScreen(
             }
 
             ErpPrimaryButton(
-                text = "Connect RFD90",
+                text = stringResource(R.string.home_connect_rfd90),
                 onClick = { navController.navigateBottomTab(Routes.CONNECT) },
             )
 
@@ -173,19 +182,19 @@ fun HomeScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(Icons.Default.Inventory2, null, tint = MaterialTheme.colorScheme.primary)
                     Column {
-                        Text("Warehouse workflows", style = MaterialTheme.typography.titleMedium)
-                        Text("Receive, putaway, pick, count, encode", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.home_workflows_title), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.home_workflows_subtitle), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
 
             ErpCard {
-                Text("RFID read sync", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.home_sync_title), style = MaterialTheme.typography.titleMedium)
                 Text(
                     if (pending > 0) {
-                        "$pending read batch${if (pending == 1) "" else "es"} queued — uploading when online"
+                        context.resources.getQuantityString(R.plurals.home_sync_pending, pending, pending)
                     } else {
-                        "Scans upload automatically; no manual sync needed"
+                        stringResource(R.string.home_sync_idle)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -18,7 +18,6 @@ import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -36,10 +35,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.rfid.RfidConnectionState
 import com.erpcomplete.rfid.ui.components.BluetoothDisabledBanner
@@ -47,7 +48,9 @@ import com.erpcomplete.rfid.ui.components.ErpCard
 import com.erpcomplete.rfid.ui.components.ReaderStatusCard
 import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
 import com.erpcomplete.rfid.ui.components.ErpScaffold
+import com.erpcomplete.rfid.ui.components.MacAddressTextField
 import com.erpcomplete.rfid.ui.components.PairingCameraScanner
+import com.erpcomplete.rfid.ui.components.PairingScanMode
 import com.erpcomplete.rfid.ui.components.StatusBanner
 import com.erpcomplete.rfid.util.BarcodeBitmap
 import com.erpcomplete.rfid.util.PhoneBluetooth
@@ -73,7 +76,22 @@ fun ConnectScreen(container: AppContainer) {
     var macSource by remember { mutableStateOf(PhoneMacInputSource.SAVED) }
     var autoDetectFailed by remember { mutableStateOf(false) }
     var showManualMacField by remember { mutableStateOf(false) }
+    var showMacCameraScanner by remember { mutableStateOf(false) }
+    var macScanError by remember { mutableStateOf<String?>(null) }
     var scanGeneration by remember { mutableIntStateOf(0) }
+
+    fun applyPhoneMac(mac12: String) {
+        phoneMacInput = mac12
+        macSource = PhoneMacInputSource.MANUAL
+        showManualMacField = true
+        showMacCameraScanner = false
+        macScanError = null
+        scope.launch {
+            rfid.readerStore().savePhoneMac(mac12)
+            macSource = PhoneMacInputSource.SAVED
+            autoDetectFailed = false
+        }
+    }
 
     LaunchedEffect(state) {
         if (state is RfidConnectionState.Error) {
@@ -134,14 +152,21 @@ fun ConnectScreen(container: AppContainer) {
         }
     }
 
-    val phoneMac = PhoneBluetooth.normalizeMac12(phoneMacInput)
+    val phoneMac = PhoneBluetooth.parseMacInput(phoneMacInput) ?: PhoneBluetooth.normalizeMac12(phoneMacInput)
+
+    LaunchedEffect(autoDetectFailed, phoneMac, pairingTab) {
+        if (pairingTab == 1 && autoDetectFailed && phoneMac == null) {
+            showManualMacField = true
+        }
+    }
+
     val pairingBarcode = remember(phoneMac) {
         phoneMac?.let { runCatching { BarcodeBitmap.code128(it, 900, 260) }.getOrNull() }
     }
 
     ErpScaffold(
-        title = "RFID Reader",
-        subtitle = "Zebra RFD90 Scan-to-Connect",
+        title = stringResource(R.string.connect_title),
+        subtitle = stringResource(R.string.connect_subtitle),
     ) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             BluetoothDisabledBanner()
@@ -151,12 +176,12 @@ fun ConnectScreen(container: AppContainer) {
                 isConnected -> {
                     val name = (connectionState as? RfidConnectionState.Connected)?.readerName
                         ?: rfid.connectedName()
-                        ?: "RFD90"
-                    StatusBanner("Connected to $name")
+                        ?: stringResource(R.string.connect_reader_default_name)
+                    StatusBanner(stringResource(R.string.connect_status_connected, name))
                 }
-                connectionState is RfidConnectionState.Pairing -> StatusBanner("Pairing with reader…")
+                connectionState is RfidConnectionState.Pairing -> StatusBanner(stringResource(R.string.connect_status_pairing))
                 connectionState is RfidConnectionState.Error -> StatusBanner(connectionState.message, isError = true)
-                else -> StatusBanner("Pair using Scan-to-Connect — saved readers reconnect automatically.")
+                else -> StatusBanner(stringResource(R.string.connect_status_idle))
             }
 
             if (!isConnected) {
@@ -166,12 +191,12 @@ fun ConnectScreen(container: AppContainer) {
                     Tab(
                         selected = pairingTab == 0,
                         onClick = { pairingTab = 0 },
-                        text = { Text("Scan reader QR") },
+                        text = { Text(stringResource(R.string.connect_tab_scan_reader)) },
                     )
                     Tab(
                         selected = pairingTab == 1,
                         onClick = { pairingTab = 1 },
-                        text = { Text("Show phone barcode") },
+                        text = { Text(stringResource(R.string.connect_tab_phone_barcode)) },
                     )
                 }
 
@@ -188,25 +213,26 @@ fun ConnectScreen(container: AppContainer) {
                         macSource = macSource,
                         autoDetectFailed = autoDetectFailed,
                         showManualMacField = showManualMacField,
+                        showMacCameraScanner = showMacCameraScanner,
+                        macScanError = macScanError,
                         onShowManualMacField = { showManualMacField = true },
+                        onToggleMacCameraScanner = { showMacCameraScanner = !showMacCameraScanner },
                         onPhoneMacChange = { value ->
                             phoneMacInput = value
                             macSource = PhoneMacInputSource.MANUAL
+                            macScanError = null
                         },
+                        onMacCaptured = { applyPhoneMac(it) },
                         phoneMac = phoneMac,
                         pairingBarcode = pairingBarcode,
                         onRetryAutoDetect = {
                             scope.launch { refreshPhoneMac() }
                         },
                         onSaveMac = {
-                            scope.launch {
-                                PhoneBluetooth.normalizeMac12(phoneMacInput)?.let {
-                                    rfid.readerStore().savePhoneMac(it)
-                                    phoneMacInput = it
-                                    macSource = PhoneMacInputSource.SAVED
-                                    showManualMacField = false
-                                    autoDetectFailed = false
-                                }
+                            PhoneBluetooth.parseMacInput(phoneMacInput)?.let { mac ->
+                                applyPhoneMac(mac)
+                            } ?: run {
+                                macScanError = context.getString(R.string.connect_mac_invalid)
                             }
                         },
                         onReaderMayBePaired = { rfid.finishPhoneBarcodePairing() },
@@ -226,15 +252,15 @@ fun ConnectScreen(container: AppContainer) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
                     androidx.compose.material3.Icon(Icons.Default.TouchApp, null, tint = MaterialTheme.colorScheme.primary)
                     Column {
-                        Text("Hardware controls", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.connect_hardware_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "Top trigger — press and hold to start RFID scan; release to stop.",
+                            stringResource(R.string.connect_hardware_top_trigger),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Bottom trigger — press to start continuous barcode scan; press again to stop.",
+                            stringResource(R.string.connect_hardware_bottom_trigger),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -243,7 +269,7 @@ fun ConnectScreen(container: AppContainer) {
 
             if (isConnected) {
                 Spacer(Modifier.height(16.dp))
-                ErpPrimaryButton(text = "Disconnect reader", onClick = { rfid.reset() })
+                ErpPrimaryButton(text = stringResource(R.string.connect_disconnect), onClick = { rfid.reset() })
             }
         }
     }
@@ -260,13 +286,13 @@ private fun ScanReaderTab(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 androidx.compose.material3.Icon(Icons.Default.QrCode2, null, tint = MaterialTheme.colorScheme.primary)
                 Text(
-                    "Scan the QR / barcode on your RFD90",
+                    stringResource(R.string.connect_scan_reader_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
             Text(
-                "Recommended — no phone Bluetooth address needed. On the reader, open Scan-to-Connect and scan its barcode with this camera.",
+                stringResource(R.string.connect_scan_reader_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -285,8 +311,12 @@ private fun ShowPhoneBarcodeTab(
     macSource: PhoneMacInputSource,
     autoDetectFailed: Boolean,
     showManualMacField: Boolean,
+    showMacCameraScanner: Boolean,
+    macScanError: String?,
     onShowManualMacField: () -> Unit,
+    onToggleMacCameraScanner: () -> Unit,
     onPhoneMacChange: (String) -> Unit,
+    onMacCaptured: (String) -> Unit,
     phoneMac: String?,
     pairingBarcode: android.graphics.Bitmap?,
     onRetryAutoDetect: () -> Unit,
@@ -303,7 +333,7 @@ private fun ShowPhoneBarcodeTab(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                "Let the RFD90 scan this phone",
+                stringResource(R.string.connect_phone_barcode_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.fillMaxWidth(),
@@ -312,12 +342,12 @@ private fun ShowPhoneBarcodeTab(
             when {
                 needsBtPermission -> {
                     StatusBanner(
-                        "Allow Nearby devices / Bluetooth permission so the app can read this phone's address automatically.",
+                        stringResource(R.string.connect_bt_permission_required),
                         isError = true,
                     )
                 }
                 macSource == PhoneMacInputSource.AUTO && phoneMac != null -> {
-                    StatusBanner("Bluetooth address detected automatically.")
+                    StatusBanner(stringResource(R.string.connect_mac_auto_detected))
                     Text(
                         PhoneBluetooth.formatMac(phoneMac),
                         style = MaterialTheme.typography.titleMedium,
@@ -325,14 +355,14 @@ private fun ShowPhoneBarcodeTab(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
-                        "Show this barcode to the RFD90 Scan-to-Connect scanner.",
+                        stringResource(R.string.connect_show_barcode_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 macSource == PhoneMacInputSource.SAVED && phoneMac != null && !showManualMacField -> {
-                    StatusBanner("Using saved Bluetooth address from a previous pairing.")
+                    StatusBanner(stringResource(R.string.connect_mac_saved))
                     Text(
                         PhoneBluetooth.formatMac(phoneMac),
                         style = MaterialTheme.typography.titleMedium,
@@ -340,16 +370,15 @@ private fun ShowPhoneBarcodeTab(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     TextButton(onClick = onRetryAutoDetect) {
-                        Text("Try auto-detect again")
+                        Text(stringResource(R.string.connect_retry_auto_detect))
                     }
                 }
                 else -> {
                     Text(
                         if (autoDetectFailed) {
-                            "Android blocks most apps from reading the phone Bluetooth address. " +
-                                "Use the Scan reader QR tab when possible, or enter the address manually below."
+                            stringResource(R.string.connect_mac_auto_failed_body)
                         } else {
-                            "Detecting this phone's Bluetooth address…"
+                            stringResource(R.string.connect_mac_detecting)
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -361,37 +390,61 @@ private fun ShowPhoneBarcodeTab(
                                 if (showManualMacField) onRetryAutoDetect() else onShowManualMacField()
                             },
                         ) {
-                            Text(if (showManualMacField) "Retry auto-detect" else "Enter address manually")
+                            Text(
+                                if (showManualMacField) {
+                                    stringResource(R.string.connect_retry_auto_detect_short)
+                                } else {
+                                    stringResource(R.string.connect_enter_mac_manually)
+                                },
+                            )
                         }
                     }
                 }
             }
 
             if (showManualMacField || (autoDetectFailed && macSource == PhoneMacInputSource.MANUAL)) {
-                OutlinedTextField(
+                MacAddressTextField(
                     value = phoneMacInput,
                     onValueChange = onPhoneMacChange,
-                    label = { Text("Phone Bluetooth address") },
-                    placeholder = { Text("A1B2C3D4E5F6") },
-                    singleLine = true,
+                    label = { Text(stringResource(R.string.connect_phone_mac_label)) },
+                    placeholder = { Text(stringResource(R.string.connect_phone_mac_placeholder)) },
                     modifier = Modifier.fillMaxWidth(),
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                    onScanComplete = onMacCaptured,
                 )
-                ErpPrimaryButton(text = "Save address", onClick = onSaveMac)
+                TextButton(onClick = onToggleMacCameraScanner) {
+                    Text(
+                        if (showMacCameraScanner) {
+                            stringResource(R.string.connect_hide_mac_camera)
+                        } else {
+                            stringResource(R.string.connect_scan_mac_with_camera)
+                        },
+                    )
+                }
+                if (showMacCameraScanner) {
+                    PairingCameraScanner(
+                        scanMode = PairingScanMode.MAC_ADDRESS,
+                        onBarcodeScanned = {},
+                        onMacCaptured = onMacCaptured,
+                    )
+                }
+                if (!macScanError.isNullOrBlank()) {
+                    StatusBanner(macScanError, isError = true)
+                }
+                ErpPrimaryButton(text = stringResource(R.string.connect_save_mac), onClick = onSaveMac)
             }
 
             if (pairingBarcode != null && phoneMac != null) {
                 Image(
                     bitmap = pairingBarcode.asImageBitmap(),
-                    contentDescription = "Phone pairing barcode",
+                    contentDescription = stringResource(R.string.cd_phone_pairing_barcode),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 8.dp),
                 )
-                ErpPrimaryButton(text = "Reader scanned — connect now", onClick = onReaderMayBePaired)
+                ErpPrimaryButton(text = stringResource(R.string.connect_reader_scanned_connect), onClick = onReaderMayBePaired)
             } else if (!needsBtPermission && autoDetectFailed && !showManualMacField) {
                 StatusBanner(
-                    "Tip: open Connect → Scan reader QR — that flow never needs your phone address.",
+                    stringResource(R.string.connect_tip_use_qr_tab),
                 )
             }
         }

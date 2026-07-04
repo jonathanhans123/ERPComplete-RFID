@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -55,9 +56,16 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import android.app.Activity
+import com.erpcomplete.rfid.R
+import com.erpcomplete.rfid.ui.util.UiStrings
+import com.erpcomplete.rfid.util.LocaleHelper
 import androidx.navigation.NavHostController
 import com.erpcomplete.rfid.BuildConfig
 import com.erpcomplete.rfid.data.AppContainer
+import com.erpcomplete.rfid.data.LocaleSettingsStore
 import com.erpcomplete.rfid.data.ScanProfile
 import com.erpcomplete.rfid.rfid.ReaderDiagnostics
 import com.erpcomplete.rfid.rfid.FirmwareUpdateState
@@ -91,6 +99,7 @@ fun SettingsScreen(
     val apiBaseUrl by container.apiSettingsStore.baseUrl.collectAsState(initial = BuildConfig.API_BASE_URL)
     val failedSync by container.syncRepository.failedItems.collectAsState()
     val pendingSync by container.syncRepository.pendingCount.collectAsState()
+    val languageTag by container.localeSettingsStore.languageTag.collectAsState(initial = LocaleSettingsStore.SYSTEM)
 
     var prefixDraft by remember { mutableStateOf(companyPrefix.orEmpty()) }
     var apiUrlDraft by remember { mutableStateOf(apiBaseUrl) }
@@ -98,6 +107,7 @@ fun SettingsScreen(
     var message by remember { mutableStateOf<String?>(null) }
     var confirmWorkspaceChange by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val prefixDirty = prefixDraft != companyPrefix.orEmpty()
 
     LaunchedEffect(companyPrefix) {
@@ -115,8 +125,8 @@ fun SettingsScreen(
     if (confirmWorkspaceChange) {
         AlertDialog(
             onDismissRequest = { confirmWorkspaceChange = false },
-            title = { Text("Change workspace?") },
-            text = { Text("Unsaved work on open screens may be lost. Continue to pick another warehouse?") },
+            title = { Text(stringResource(R.string.workspace_change_title)) },
+            text = { Text(stringResource(R.string.workspace_change_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -128,15 +138,20 @@ fun SettingsScreen(
                             }
                         }
                     },
-                ) { Text("Change") }
+                ) { Text(stringResource(R.string.action_change)) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmWorkspaceChange = false }) { Text("Cancel") }
+                TextButton(onClick = { confirmWorkspaceChange = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
             },
         )
     }
 
-    ErpScaffold(title = "Settings", subtitle = "Device & workspace") {
+    ErpScaffold(
+        title = stringResource(R.string.settings_title),
+        subtitle = stringResource(R.string.settings_subtitle),
+    ) {
         message?.let {
             com.erpcomplete.rfid.ui.components.StatusBanner(
                 it,
@@ -165,19 +180,71 @@ fun SettingsScreen(
                 )
             }
 
-            SettingsSectionLabel("RFID reader")
+            SettingsSectionLabel(stringResource(R.string.settings_section_language))
+
+            ErpCard {
+                SettingsCardHeader(
+                    icon = Icons.Default.Language,
+                    title = stringResource(R.string.settings_language_title),
+                    subtitle = stringResource(R.string.settings_language_subtitle),
+                )
+                Spacer(Modifier.height(12.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LanguageOption(
+                        title = stringResource(R.string.settings_language_system),
+                        selected = languageTag == LocaleSettingsStore.SYSTEM,
+                        onClick = {
+                            if (languageTag != LocaleSettingsStore.SYSTEM) {
+                                scope.launch {
+                                    container.localeSettingsStore.setLanguageTag(LocaleSettingsStore.SYSTEM)
+                                    LocaleHelper.apply(context, LocaleSettingsStore.SYSTEM)
+                                    (context as? Activity)?.recreate()
+                                }
+                            }
+                        },
+                    )
+                    LanguageOption(
+                        title = stringResource(R.string.settings_language_english),
+                        selected = languageTag == LocaleSettingsStore.ENGLISH,
+                        onClick = {
+                            if (languageTag != LocaleSettingsStore.ENGLISH) {
+                                scope.launch {
+                                    container.localeSettingsStore.setLanguageTag(LocaleSettingsStore.ENGLISH)
+                                    LocaleHelper.apply(context, LocaleSettingsStore.ENGLISH)
+                                    (context as? Activity)?.recreate()
+                                }
+                            }
+                        },
+                    )
+                    LanguageOption(
+                        title = stringResource(R.string.settings_language_indonesian),
+                        selected = languageTag == LocaleSettingsStore.INDONESIAN,
+                        onClick = {
+                            if (languageTag != LocaleSettingsStore.INDONESIAN) {
+                                scope.launch {
+                                    container.localeSettingsStore.setLanguageTag(LocaleSettingsStore.INDONESIAN)
+                                    LocaleHelper.apply(context, LocaleSettingsStore.INDONESIAN)
+                                    (context as? Activity)?.recreate()
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+
+            SettingsSectionLabel(stringResource(R.string.settings_section_rfid))
 
             ErpCard {
                 SettingsCardHeader(
                     icon = Icons.Default.Tune,
-                    title = "Scan profile",
-                    subtitle = "Power and link rate for inventory",
+                    title = stringResource(R.string.settings_scan_profile_title),
+                    subtitle = stringResource(R.string.settings_scan_profile_subtitle),
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ScanProfileOption(
-                        title = "Range",
-                        description = "Max distance",
+                        title = stringResource(R.string.settings_scan_range),
+                        description = stringResource(R.string.settings_scan_range_desc),
                         selected = scanProfile == ScanProfile.RANGE,
                         modifier = Modifier.weight(1f),
                         onClick = {
@@ -188,8 +255,8 @@ fun SettingsScreen(
                         },
                     )
                     ScanProfileOption(
-                        title = "Dense",
-                        description = "Crowded aisles",
+                        title = stringResource(R.string.settings_scan_dense),
+                        description = stringResource(R.string.settings_scan_dense_desc),
                         selected = scanProfile == ScanProfile.DENSE,
                         modifier = Modifier.weight(1f),
                         onClick = {
@@ -205,12 +272,12 @@ fun SettingsScreen(
             ErpCard {
                 SettingsCardHeader(
                     icon = Icons.Default.FilterAlt,
-                    title = "EPC pre-filter",
-                    subtitle = "Hardware mask for company tag prefix",
+                    title = stringResource(R.string.settings_epc_prefilter_title),
+                    subtitle = stringResource(R.string.settings_epc_prefilter_subtitle),
                 )
                 Spacer(Modifier.height(8.dp))
                 SettingsToggleRow(
-                    label = "Enable mask on reader",
+                    label = stringResource(R.string.settings_epc_prefilter_enable),
                     checked = prefilterEnabled,
                     onCheckedChange = { enabled ->
                         scope.launch {
@@ -223,9 +290,9 @@ fun SettingsScreen(
                 OutlinedTextField(
                     value = prefixDraft,
                     onValueChange = { prefixDraft = it.uppercase().filter { ch -> ch in "0123456789ABCDEF" } },
-                    label = { Text("Company EPC prefix") },
-                    placeholder = { Text("3034257B") },
-                    supportingText = { Text("Hex only — used when no locate target is set") },
+                    label = { Text(stringResource(R.string.settings_epc_prefix_label)) },
+                    placeholder = { Text(stringResource(R.string.settings_epc_prefix_placeholder)) },
+                    supportingText = { Text(stringResource(R.string.settings_epc_prefix_help)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
@@ -242,12 +309,12 @@ fun SettingsScreen(
                         },
                         modifier = Modifier.align(Alignment.End),
                     ) {
-                        Text("Save prefix")
+                        Text(stringResource(R.string.settings_save_prefix))
                     }
                 }
                 if (diagnostics.epcPrefilterActive && diagnostics.epcPrefilterMask != null) {
                     Spacer(Modifier.height(4.dp))
-                    ActiveChip("Active: ${diagnostics.epcPrefilterMask}")
+                    ActiveChip(stringResource(R.string.settings_active_mask, diagnostics.epcPrefilterMask!!))
                 }
             }
 
@@ -259,12 +326,16 @@ fun SettingsScreen(
                 ) {
                     SettingsCardHeader(
                         icon = Icons.Default.Bluetooth,
-                        title = "Reader diagnostics",
-                        subtitle = if (diagnostics.connected) "Live from RFD90" else "Connect reader first",
+                        title = stringResource(R.string.settings_diagnostics_title),
+                        subtitle = if (diagnostics.connected) {
+                            stringResource(R.string.settings_diagnostics_live)
+                        } else {
+                            stringResource(R.string.settings_diagnostics_connect_first)
+                        },
                         modifier = Modifier.weight(1f),
                     )
                     IconButton(onClick = { container.rfidManager.refreshDiagnostics() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh diagnostics")
+                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.cd_refresh))
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -272,7 +343,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(12.dp))
                 if (diagnostics.connected) {
                     Text(
-                        "Scanner battery",
+                        stringResource(R.string.settings_scanner_battery),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -292,7 +363,7 @@ fun SettingsScreen(
                     DiagnosticsGrid(diagnostics)
                 } else {
                     Text(
-                        "Pair the RFD90 on the Connect tab to see firmware, battery, and Bluetooth details here.",
+                        stringResource(R.string.settings_pair_reader_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -316,12 +387,12 @@ fun SettingsScreen(
             ErpCard {
                 SettingsCardHeader(
                     icon = Icons.Default.SystemUpdate,
-                    title = "Firmware update",
-                    subtitle = "Check Zebra.com for RFD90 updates",
+                    title = stringResource(R.string.settings_firmware_title),
+                    subtitle = stringResource(R.string.settings_firmware_subtitle),
                 )
                 Spacer(Modifier.height(10.dp))
                 SettingsToggleRow(
-                    label = "Auto-check when reader connects",
+                    label = stringResource(R.string.settings_firmware_auto_check),
                     checked = autoFirmwareCheck,
                     onCheckedChange = {
                         scope.launch { container.rfidSettingsStore.setAutoFirmwareCheck(it) }
@@ -330,7 +401,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(8.dp))
                 diagnostics.firmwareVersion?.let {
                     Text(
-                        "Installed: $it",
+                        stringResource(R.string.settings_firmware_installed, it),
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
                     )
@@ -342,8 +413,8 @@ fun SettingsScreen(
                 Spacer(Modifier.height(10.dp))
                 ErpPrimaryButton(
                     text = when (firmwareUpdate.phase) {
-                        FirmwareUpdateState.Phase.CHECKING -> "Checking…"
-                        else -> "Check for firmware update"
+                        FirmwareUpdateState.Phase.CHECKING -> stringResource(R.string.settings_firmware_checking)
+                        else -> stringResource(R.string.settings_firmware_check)
                     },
                     enabled = isConnected && firmwareUpdate.phase != FirmwareUpdateState.Phase.CHECKING,
                     onClick = { container.rfidManager.checkFirmwareUpdate(refresh = true) },
@@ -351,14 +422,14 @@ fun SettingsScreen(
                 if (firmwareUpdate.phase == FirmwareUpdateState.Phase.UPDATE_AVAILABLE) {
                     Spacer(Modifier.height(8.dp))
                     ErpPrimaryButton(
-                        text = "Download from Zebra",
+                        text = stringResource(R.string.settings_firmware_download),
                         onClick = { container.rfidManager.downloadFirmwareUpdate() },
                     )
                 }
                 if (firmwareUpdate.phase == FirmwareUpdateState.Phase.READY_TO_INSTALL) {
                     Spacer(Modifier.height(8.dp))
                     ErpPrimaryButton(
-                        text = "Install on reader",
+                        text = stringResource(R.string.settings_firmware_install),
                         onClick = { container.rfidManager.installFirmwareUpdate() },
                     )
                 }
@@ -368,50 +439,57 @@ fun SettingsScreen(
                 ) {
                     Spacer(Modifier.height(8.dp))
                     TextButton(onClick = { container.rfidManager.clearFirmwareUpdateState() }) {
-                        Text("Dismiss")
+                        Text(stringResource(R.string.action_dismiss))
                     }
                 }
             }
 
             InfoNoteCard(
                 icon = Icons.Default.Info,
-                title = "Firmware notes",
-                body = "Updates are discovered from Zebra support pages via ERP, then downloaded and applied over Bluetooth. Keep battery above 20% and stay near the reader until it reboots. Encrypted .EDAT packages are not supported yet.",
+                title = stringResource(R.string.settings_firmware_notes_title),
+                body = stringResource(R.string.settings_firmware_notes_body),
             )
 
-            SettingsSectionLabel("Server")
+            SettingsSectionLabel(stringResource(R.string.settings_section_server))
 
             ErpCard {
                 OutlinedTextField(
                     value = apiUrlDraft,
                     onValueChange = { apiUrlDraft = it },
-                    label = { Text("API base URL") },
-                    supportingText = { Text("Default: ${BuildConfig.API_BASE_URL}") },
+                    label = { Text(stringResource(R.string.settings_api_url_label)) },
+                    supportingText = { Text(stringResource(R.string.settings_api_url_default, BuildConfig.API_BASE_URL)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
                 if (apiUrlDraft.trimEnd('/') != apiBaseUrl.trimEnd('/')) {
                     Spacer(Modifier.height(8.dp))
                     ErpPrimaryButton(
-                        text = "Save API URL",
+                        text = stringResource(R.string.settings_save_api_url),
                         onClick = {
                             scope.launch {
                                 container.apiSettingsStore.setBaseUrl(apiUrlDraft)
-                                message = "API URL saved — restart app if requests fail"
+                                message = context.getString(R.string.settings_api_url_saved)
                             }
                         },
                     )
                 }
             }
 
-            SettingsSectionLabel("Sync")
+            SettingsSectionLabel(stringResource(R.string.settings_section_sync))
 
             ErpCard {
-                Text("Pending uploads: $pendingSync", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    stringResource(R.string.settings_pending_uploads, pendingSync),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
                 if (failedSync.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "${failedSync.size} batch(es) failed after ${com.erpcomplete.rfid.sync.SyncRepository.MAX_ATTEMPTS} tries",
+                        stringResource(
+                            R.string.settings_failed_batches,
+                            failedSync.size,
+                            com.erpcomplete.rfid.sync.SyncRepository.MAX_ATTEMPTS,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -428,44 +506,44 @@ fun SettingsScreen(
                     OutlinedButton(
                         onClick = { scope.launch { container.syncRepository.flush() } },
                         modifier = Modifier.weight(1f),
-                    ) { Text("Retry sync") }
+                    ) { Text(stringResource(R.string.settings_retry_sync)) }
                     OutlinedButton(
                         onClick = { scope.launch { container.syncRepository.discardFailed() } },
                         modifier = Modifier.weight(1f),
                         enabled = failedSync.isNotEmpty(),
-                    ) { Text("Discard failed") }
+                    ) { Text(stringResource(R.string.settings_discard_failed)) }
                 }
             }
 
-            SettingsSectionLabel("Tags")
+            SettingsSectionLabel(stringResource(R.string.settings_section_tags))
 
             ErpCard {
                 OutlinedTextField(
                     value = voidEpc,
                     onValueChange = { voidEpc = it.uppercase() },
-                    label = { Text("Void damaged tag (EPC)") },
+                    label = { Text(stringResource(R.string.settings_void_tag_label)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
                 Spacer(Modifier.height(8.dp))
                 ErpPrimaryButton(
-                    text = "Void tag",
+                    text = stringResource(R.string.settings_void_tag),
                     onClick = {
                         scope.launch {
                             runCatching {
                                 val epc = voidEpc.trim()
-                                if (epc.isBlank()) error("Enter an EPC")
+                                if (epc.isBlank()) error(context.getString(R.string.settings_void_enter_epc))
                                 val res = container.api.voidTag(epc)
                                 if (!res.isSuccessful) error(com.erpcomplete.rfid.util.ApiErrorParser.httpMessage(res, authenticated = true))
                                 voidEpc = ""
-                                "Tag voided"
+                                context.getString(R.string.settings_void_success)
                             }.onSuccess { message = it }.onFailure { message = it.message }
                         }
                     },
                 )
             }
 
-            SettingsSectionLabel("Account")
+            SettingsSectionLabel(stringResource(R.string.settings_section_account))
 
             OutlinedButton(
                 onClick = {
@@ -480,13 +558,13 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(14.dp),
             ) {
-                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Sign out", Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = stringResource(R.string.cd_sign_out), Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
-                Text("Sign out")
+                Text(stringResource(R.string.settings_sign_out))
             }
 
             Text(
-                "ERPComplete RFID ${BuildConfig.VERSION_NAME}",
+                stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
                 Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -577,6 +655,43 @@ private fun ScanProfileOption(
 }
 
 @Composable
+private fun LanguageOption(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.5.dp, borderColor, RoundedCornerShape(12.dp))
+            .background(bg)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        )
+        if (selected) {
+            Box(
+                Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+            )
+        }
+    }
+}
+
+@Composable
 private fun SettingsToggleRow(
     label: String,
     checked: Boolean,
@@ -596,7 +711,11 @@ private fun SettingsToggleRow(
 private fun ConnectionStatusChip(connected: Boolean) {
     val bg = if (connected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
     val fg = if (connected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-    val label = if (connected) "Connected" else "Not connected"
+    val label = if (connected) {
+        stringResource(R.string.status_connected)
+    } else {
+        stringResource(R.string.status_not_connected)
+    }
     Box(
         Modifier
             .clip(RoundedCornerShape(50))
@@ -627,13 +746,13 @@ private fun ActiveChip(text: String) {
 @Composable
 private fun DiagnosticsGrid(diagnostics: ReaderDiagnostics) {
     val rows = buildList {
-        diagnostics.readerName?.let { add("Reader" to it) }
-        diagnostics.modelName?.let { add("Model" to it) }
-        diagnostics.firmwareVersion?.let { add("Firmware" to it) }
-        diagnostics.serialNumber?.let { add("Serial" to it) }
-        diagnostics.readerAddress?.let { add("Bluetooth" to it) }
-        diagnostics.scanProfile?.let { add("Profile" to it) }
-        diagnostics.antennaCount?.let { add("Antennas" to it.toString()) }
+        diagnostics.readerName?.let { add(stringResource(R.string.diag_reader) to it) }
+        diagnostics.modelName?.let { add(stringResource(R.string.diag_model) to it) }
+        diagnostics.firmwareVersion?.let { add(stringResource(R.string.diag_firmware) to it) }
+        diagnostics.serialNumber?.let { add(stringResource(R.string.diag_serial) to it) }
+        diagnostics.readerAddress?.let { add(stringResource(R.string.diag_bluetooth) to it) }
+        diagnostics.scanProfile?.let { add(stringResource(R.string.diag_profile) to UiStrings.scanProfileLabel(it)) }
+        diagnostics.antennaCount?.let { add(stringResource(R.string.diag_antennas) to it.toString()) }
     }
     if (rows.isEmpty()) return
     Column(Modifier.fillMaxWidth()) {

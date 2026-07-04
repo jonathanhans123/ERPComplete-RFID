@@ -1,6 +1,8 @@
 package com.erpcomplete.rfid.rfid
 
+import android.content.Context
 import android.util.Log
+import com.erpcomplete.rfid.R
 import com.zebra.rfid.api3.DYNAMIC_POWER_OPTIMIZATION
 import com.zebra.rfid.api3.FILTER_ACTION
 import com.zebra.rfid.api3.MEMORY_BANK
@@ -54,13 +56,13 @@ internal object RfidHardwareOps {
         r.Actions.PreFilters.deleteAll()
     }
 
-    fun writeEpc(r: RFIDReader, sourceTagEpc: String, newEpcHex: String): TagWriteResult {
+    fun writeEpc(context: Context, r: RFIDReader, sourceTagEpc: String, newEpcHex: String): TagWriteResult {
         val source = normalizeHexPattern(sourceTagEpc)
-            ?: return TagWriteResult.Failure("Invalid source tag EPC")
+            ?: return TagWriteResult.Failure(context.getString(R.string.rfid_epc_invalid_source))
         val target = normalizeHexPattern(newEpcHex)
-            ?: return TagWriteResult.Failure("Invalid target EPC (use hex)")
+            ?: return TagWriteResult.Failure(context.getString(R.string.rfid_epc_invalid_target))
         if (target.length % 4 != 0) {
-            return TagWriteResult.Failure("EPC length must be a multiple of 4 hex characters (16-bit words)")
+            return TagWriteResult.Failure(context.getString(R.string.rfid_epc_invalid_length))
         }
 
         return try {
@@ -80,9 +82,11 @@ internal object RfidHardwareOps {
             r.Actions.TagAccess.writeWait(source, writeParams, null, sourceTag, true, true)
             TagWriteResult.Success(target)
         } catch (e: OperationFailureException) {
-            TagWriteResult.Failure(e.vendorMessage ?: e.message ?: "Write failed")
+            TagWriteResult.Failure(
+                e.vendorMessage ?: e.message ?: context.getString(R.string.rfid_epc_write_failed),
+            )
         } catch (e: Exception) {
-            TagWriteResult.Failure(e.message ?: "Write failed")
+            TagWriteResult.Failure(e.message ?: context.getString(R.string.rfid_epc_write_failed))
         }
     }
 

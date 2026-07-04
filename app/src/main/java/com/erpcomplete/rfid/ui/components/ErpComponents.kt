@@ -37,8 +37,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.ui.theme.IndigoDark
 import com.erpcomplete.rfid.ui.theme.IndigoPrimary
 
@@ -73,7 +75,7 @@ fun ErpScaffold(
                 navigationIcon = {
                     if (onBack != null) {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                         }
                     }
                 },
@@ -190,9 +192,9 @@ fun WorkflowTile(
 @Composable
 fun SyncStatusChip(pending: Int) {
     val (label, color) = if (pending > 0) {
-        "$pending pending" to MaterialTheme.colorScheme.secondary
+        stringResource(R.string.sync_pending_count, pending) to MaterialTheme.colorScheme.secondary
     } else {
-        "Synced" to MaterialTheme.colorScheme.primary
+        stringResource(R.string.sync_status_synced) to MaterialTheme.colorScheme.primary
     }
     Box(
         Modifier

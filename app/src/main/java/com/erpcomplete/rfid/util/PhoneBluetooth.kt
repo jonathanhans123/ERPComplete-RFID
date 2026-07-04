@@ -78,6 +78,39 @@ object PhoneBluetooth {
         return hex
     }
 
+    /**
+     * Parse phone / reader barcodes, QR JSON, wedge scanner input, and labeled MAC text.
+     */
+    fun parseMacInput(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        val trimmed = raw.trim().trimEnd('\r', '\n', '\t', ' ')
+        if (trimmed.isBlank()) return null
+
+        Regex(""""bluetooth(?:_address)?"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
+            .find(trimmed)?.groupValues?.get(1)?.let { normalizeMac12(it)?.let { mac -> return mac } }
+
+        Regex("""bluetooth(?:\s*address)?\s*[:=]\s*([0-9A-Fa-f:.\-\s]+)""", RegexOption.IGNORE_CASE)
+            .find(trimmed)?.groupValues?.get(1)?.let { normalizeMac12(it)?.let { mac -> return mac } }
+
+        Regex("""\b([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\b""")
+            .find(trimmed)?.groupValues?.get(1)?.let { normalizeMac12(it)?.let { mac -> return mac } }
+
+        Regex("""\b([0-9A-Fa-f]{2}(?:-[0-9A-Fa-f]{2}){5})\b""")
+            .find(trimmed)?.groupValues?.get(1)?.let { normalizeMac12(it)?.let { mac -> return mac } }
+
+        com.erpcomplete.rfid.rfid.PairingBarcodeParser.parse(trimmed)?.macAddress
+            ?.let { normalizeMac12(it)?.let { mac -> return mac } }
+
+        val hexOnly = trimmed.uppercase().filter { it.isDigit() || it in 'A'..'F' }
+        if (hexOnly.length == 12) {
+            normalizeMac12(hexOnly)?.let { mac -> return mac }
+        }
+        Regex("""(?:^|[^0-9A-F])([0-9A-F]{12})(?:[^0-9A-F]|$)""", RegexOption.IGNORE_CASE)
+            .find(hexOnly)?.groupValues?.get(1)?.let { normalizeMac12(it)?.let { mac -> return mac } }
+
+        return normalizeMac12(trimmed)
+    }
+
     fun formatMac(hex12: String): String =
         hex12.chunked(2).joinToString(":")
 

@@ -467,6 +467,8 @@ data class FirmwareCheckResult(
     val file_name: String? = null,
     val support_page: String? = null,
     val checked_at: String? = null,
+    val catalog_source: String? = null,
+    val catalog_message: String? = null,
 )
 
 data class StartSessionRequest(val warehouse_location_id: Long? = null)

@@ -22,9 +22,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
+import com.erpcomplete.rfid.ui.util.UiStrings
 import com.erpcomplete.rfid.util.DisplayFormat
 import com.erpcomplete.rfid.util.WorkflowJson
 import com.erpcomplete.rfid.util.WorkflowJson.boolean
@@ -55,21 +59,21 @@ fun UnmarkedLocationCard(
             verticalAlignment = Alignment.Top,
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Unmarked location", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.label_unmarked_location), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Stock in warehouse but not assigned to a bin",
+                    stringResource(R.string.location_unmarked_subtitle),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 itemCount?.let { count ->
                     Text(
-                        "$count line${if (count == 1) "" else "s"}",
+                        pluralStringResource(R.plurals.location_line_count, count, count),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
-            InfoPill("No bin")
+            InfoPill(stringResource(R.string.location_no_bin))
         }
     }
 }
@@ -81,10 +85,11 @@ fun WarehouseLocationPickerCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val label = WorkflowJson.locationLabel(location).ifBlank { location.string("zone_name") ?: "—" }
+    val emDash = stringResource(R.string.display_empty)
+    val label = WorkflowJson.locationLabel(location).ifBlank { location.string("zone_name") ?: emDash }
     val zone = location.string("zone_name")?.takeIf { it.isNotBlank() }
     val zoneCode = location.string("zone_code")?.takeIf { it.isNotBlank() }
-    val locationType = location.string("location_type")?.let { DisplayFormat.status(it) }
+    val locationType = location.string("location_type")?.let { UiStrings.locationType(it) }
     val active = location.boolean("is_active") != false
 
     ErpCard(modifier = modifier, onClick = onClick) {
@@ -95,7 +100,7 @@ fun WarehouseLocationPickerCard(
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                listOfNotNull(zone, zoneCode?.let { "Zone $it" })
+                listOfNotNull(zone, zoneCode?.let { stringResource(R.string.location_zone_code, it) })
                     .distinct()
                     .joinToString(" · ")
                     .takeIf { it.isNotBlank() }
@@ -121,6 +126,8 @@ fun LocationStockLineCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val rollPill = stringResource(R.string.product_type_roll)
+    val standardPill = stringResource(R.string.product_type_standard)
     val isRoll = stock.isRollStockLine()
     val unit = stock.quantityUnitSuffix()
     val onHand = stock.onHandQuantity()
@@ -167,9 +174,9 @@ fun LocationStockLineCard(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            InfoPill(if (isRoll) "Roll" else "Standard")
-            rollNumber?.let { InfoPill("Roll #$it") }
-            stock.string("batch_number")?.takeIf { it.isNotBlank() }?.let { InfoPill("Batch $it") }
+            InfoPill(if (isRoll) rollPill else standardPill)
+            rollNumber?.let { InfoPill(stringResource(R.string.roll_number_pill, it)) }
+            stock.string("batch_number")?.takeIf { it.isNotBlank() }?.let { InfoPill(stringResource(R.string.batch_pill, it)) }
         }
 
         Spacer(Modifier.height(10.dp))
@@ -178,24 +185,27 @@ fun LocationStockLineCard(
             Text(
                 if (nominal != null) {
                     val nominalLabel = formatQtyWithUnit(DisplayFormat.qty(nominal), unit, isRoll = true)
-                    "$onHandLabel on hand · nominal $nominalLabel"
+                    stringResource(R.string.stock_roll_on_hand_nominal, onHandLabel, nominalLabel)
                 } else {
-                    "$onHandLabel on hand"
+                    stringResource(R.string.stock_on_hand, onHandLabel)
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
             )
             fillStatus?.let {
                 Text(
-                    if (it == "full") "Full roll — remaining length matches nominal"
-                    else "Partial roll — cut or consumed length",
+                    if (it == "full") {
+                        stringResource(R.string.roll_full_description)
+                    } else {
+                        stringResource(R.string.roll_partial_description)
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         } else {
             Text(
-                "On hand: $onHandLabel",
+                stringResource(R.string.stock_on_hand_label, onHandLabel),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
             )
@@ -217,6 +227,8 @@ fun LocationStockDetailSheet(
 ) {
     if (!visible || stock == null) return
 
+    val rollType = stringResource(R.string.product_type_roll)
+    val standardType = stringResource(R.string.product_type_standard)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isRoll = stock.isRollStockLine()
     val unit = stock.quantityUnitSuffix()
@@ -231,7 +243,7 @@ fun LocationStockDetailSheet(
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Product & stock", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.location_stock_detail_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(
                 locationLabel,
                 style = MaterialTheme.typography.labelMedium,
@@ -241,45 +253,47 @@ fun LocationStockDetailSheet(
             ErpCard(onClick = null) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(stock.productName(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    stockDetailRow("SKU", stock.productSku().takeIf { it.isNotBlank() })
-                    stockDetailRow("Variation", stock.variationLabel().takeIf { it.isNotBlank() })
-                    stockDetailRow("Product type", if (isRoll) "Roll" else "Standard")
+                    stockDetailRow(stringResource(R.string.label_sku), stock.productSku().takeIf { it.isNotBlank() })
+                    stockDetailRow(stringResource(R.string.label_variation), stock.variationLabel().takeIf { it.isNotBlank() })
+                    stockDetailRow(stringResource(R.string.label_product_type), if (isRoll) rollType else standardType)
                     if (isRoll) {
-                        stockDetailRow("Roll number", stock.string("roll_number"))
+                        stockDetailRow(stringResource(R.string.label_roll_number), stock.string("roll_number"))
                         stockDetailRow(
-                            "On-hand length",
+                            stringResource(R.string.label_on_hand_length),
                             formatQtyWithUnit(DisplayFormat.qty(onHand), unit, isRoll = true),
                         )
                         stock.rollNominalQuantity()?.let { nominal ->
                             stockDetailRow(
-                                "Nominal length",
+                                stringResource(R.string.label_nominal_length),
                                 formatQtyWithUnit(DisplayFormat.qty(nominal), unit, isRoll = true),
                             )
                         }
                         stockDetailRow(
-                            "Roll status",
+                            stringResource(R.string.label_roll_status),
                             when (fillStatus) {
-                                "full" -> "Full roll"
-                                "partial" -> "Partial roll"
+                                "full" -> stringResource(R.string.roll_status_full)
+                                "partial" -> stringResource(R.string.roll_status_partial)
                                 else -> null
                             },
                         )
                     } else {
                         stockDetailRow(
-                            "Quantity on hand",
+                            stringResource(R.string.label_quantity_on_hand),
                             formatQtyWithUnit(DisplayFormat.qty(onHand), unit, isRoll = false),
                         )
                     }
-                    stockDetailRow("Batch", stock.string("batch_number"))
-                    stock.string("stock_type")?.let { stockDetailRow("Stock type", DisplayFormat.status(it)) }
-                    stock.double("unit_price")?.let { stockDetailRow("Unit price", DisplayFormat.qty(it)) }
-                    stock.string("updated_at")?.let { stockDetailRow("Last updated", DisplayFormat.dateTime(it)) }
-                    stock.long("id")?.let { stockDetailRow("Stock line ID", "#$it") }
+                    stockDetailRow(stringResource(R.string.label_batch), stock.string("batch_number"))
+                    stock.string("stock_type")?.let {
+                        stockDetailRow(stringResource(R.string.label_stock_type), UiStrings.apiStatus(it))
+                    }
+                    stock.double("unit_price")?.let { stockDetailRow(stringResource(R.string.label_unit_price), DisplayFormat.qty(it)) }
+                    stock.string("updated_at")?.let { stockDetailRow(stringResource(R.string.label_last_updated), DisplayFormat.dateTime(it)) }
+                    stock.long("id")?.let { stockDetailRow(stringResource(R.string.label_stock_line_id), stringResource(R.string.stock_line_id_value, it)) }
                 }
             }
             if (canAdjust) {
                 ErpPrimaryButton(
-                    text = "Adjust stock",
+                    text = stringResource(R.string.action_adjust_stock),
                     onClick = { onAdjust(stock) },
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -289,12 +303,12 @@ fun LocationStockDetailSheet(
                     onClick = { onRelocate(stock) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Relocate to another bin")
+                    Text(stringResource(R.string.action_relocate_bin))
                 }
             }
             if (!canAdjust && !canRelocate) {
                 Text(
-                    "You do not have permission to adjust or relocate stock.",
+                    stringResource(R.string.location_stock_no_permission),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

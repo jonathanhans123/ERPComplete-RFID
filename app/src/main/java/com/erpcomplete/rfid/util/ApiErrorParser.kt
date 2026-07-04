@@ -1,6 +1,7 @@
 package com.erpcomplete.rfid.util
 
-import com.erpcomplete.rfid.BuildConfig
+import android.content.Context
+import com.erpcomplete.rfid.R
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import retrofit2.Response
@@ -12,26 +13,35 @@ import java.net.UnknownHostException
 object ApiErrorParser {
 
     private val gson = Gson()
+    private lateinit var appContext: Context
+
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
+
+    private fun ctx(): Context = appContext
+
+    fun genericError(): String = ctx().getString(R.string.error_something_wrong)
 
     fun networkMessage(throwable: Throwable): String = when (throwable) {
-        is UnknownHostException -> "Cannot find server. Check Wi‑Fi and API URL in Settings."
-        is ConnectException -> "Cannot connect to server. Is Laravel running?"
-        is SocketTimeoutException -> "Connection timed out. Check network and firewall."
+        is UnknownHostException -> ctx().getString(R.string.error_network_unknown_host)
+        is ConnectException -> ctx().getString(R.string.error_network_connect)
+        is SocketTimeoutException -> ctx().getString(R.string.error_network_timeout)
         is IOException -> throwable.message?.takeIf { it.isNotBlank() }
-            ?: "Network error — connection failed."
-        else -> throwable.message ?: "Unexpected error"
+            ?: ctx().getString(R.string.error_network_generic)
+        else -> throwable.message ?: ctx().getString(R.string.error_unexpected)
     }
 
     fun httpMessage(response: Response<*>, authenticated: Boolean = false): String = when (response.code()) {
         401 -> if (authenticated) {
-            parseBody(response) ?: "Session expired. Sign in again."
+            parseBody(response) ?: ctx().getString(R.string.error_session_expired)
         } else {
-            parseBody(response) ?: "Email or password is incorrect."
+            parseBody(response) ?: ctx().getString(R.string.error_invalid_credentials)
         }
-        422 -> parseBody(response) ?: "Please check your input."
-        429 -> "Too many attempts. Wait about a minute, then try again."
-        in 500..599 -> "Server error (${response.code()}). Try again later."
-        else -> parseBody(response) ?: "Request failed (${response.code()})."
+        422 -> parseBody(response) ?: ctx().getString(R.string.error_check_input)
+        429 -> ctx().getString(R.string.error_too_many_attempts)
+        in 500..599 -> ctx().getString(R.string.error_server, response.code())
+        else -> parseBody(response) ?: ctx().getString(R.string.error_request_failed, response.code())
     }
 
     private fun parseBody(response: Response<*>): String? {
@@ -39,7 +49,7 @@ object ApiErrorParser {
             ?: runCatching { response.body()?.let { gson.toJson(it) } }.getOrNull()
         if (raw.isNullOrBlank()) return null
         if (raw.contains("<html", ignoreCase = true)) {
-            return "Reached a web page instead of the API. Check API URL in Settings."
+            return ctx().getString(R.string.error_web_page_not_api)
         }
         return runCatching {
             val json = gson.fromJson(raw, JsonObject::class.java)

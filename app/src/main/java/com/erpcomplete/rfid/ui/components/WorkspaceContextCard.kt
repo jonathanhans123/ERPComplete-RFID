@@ -23,7 +23,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 
 @Composable
 fun WorkspaceContextCard(
@@ -54,14 +56,14 @@ fun WorkspaceContextCard(
             ) {
                 Icon(
                     Icons.Default.Store,
-                    contentDescription = "Warehouse",
+                    contentDescription = stringResource(R.string.cd_warehouse),
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.size(if (compact) 24.dp else 28.dp),
                 )
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    if (hasWorkspace) warehouseName!! else "No workspace selected",
+                    if (hasWorkspace) warehouseName!! else stringResource(R.string.workspace_none),
                     style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -74,12 +76,12 @@ fun WorkspaceContextCard(
                 if (!teamName.isNullOrBlank()) {
                     WorkspaceMetaRow(
                         icon = Icons.Default.Groups,
-                        label = "Team: $teamName",
+                        label = stringResource(R.string.workspace_team, teamName),
                     )
                 }
                 if (!hasWorkspace) {
                     Text(
-                        "Tap to choose business unit and warehouse",
+                        stringResource(R.string.workspace_tap_to_choose),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -90,20 +92,20 @@ fun WorkspaceContextCard(
                     if (!compact) {
                         Icon(
                             Icons.Default.SwapHoriz,
-                            contentDescription = "Change workspace",
+                            contentDescription = stringResource(R.string.cd_change_workspace),
                             modifier = Modifier.size(20.dp),
                             tint = MaterialTheme.colorScheme.primary,
                         )
                     }
                     Text(
-                        "Change",
+                        stringResource(R.string.action_change),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Icon(
                         Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Open workspace picker",
+                        contentDescription = stringResource(R.string.cd_open_workspace_picker),
                         modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.primary,
                     )

@@ -20,7 +20,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.data.remote.CreateStockOpnameRequest
 import com.erpcomplete.rfid.data.remote.SaveStockOpnameCheckRequest
@@ -46,6 +48,8 @@ import com.erpcomplete.rfid.ui.components.scanIncrementDelta
 import com.erpcomplete.rfid.ui.components.rememberScanMatchColors
 import androidx.compose.runtime.collectAsState
 import com.erpcomplete.rfid.util.ApiErrorParser
+import com.erpcomplete.rfid.util.StatusMessage
+import com.erpcomplete.rfid.ui.util.UiStrings
 import com.erpcomplete.rfid.util.DisplayFormat
 import com.erpcomplete.rfid.util.WorkflowJson
 import com.erpcomplete.rfid.util.WorkflowJson.double
@@ -121,6 +125,27 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
     val scanColors = rememberScanMatchColors()
     var lineHighlights by remember { mutableStateOf<Map<String, ScanMatchStatus>>(emptyMap()) }
 
+    val opnameTitleList = stringResource(R.string.opname_title_list)
+    val opnameTitleCreate = stringResource(R.string.opname_title_create)
+    val opnameTitleCountFallback = stringResource(R.string.opname_title_count_fallback)
+    val emDash = stringResource(R.string.display_empty)
+    val errEmptyOpname = stringResource(R.string.opname_error_empty_opname)
+    val errEmptyOpnameResponse = stringResource(R.string.opname_error_empty_response)
+    val errMissingOpnameId = stringResource(R.string.opname_error_missing_id)
+    val errEmptyCheck = stringResource(R.string.opname_error_empty_check)
+    val msgCountsSaved = stringResource(R.string.opname_success_counts_saved)
+    val msgMarkedComplete = stringResource(R.string.opname_success_marked_complete)
+    val msgOpnameApproved = stringResource(R.string.opname_success_approved)
+    val labelCountedLength = stringResource(R.string.opname_label_counted_length)
+    val labelCountedQty = stringResource(R.string.opname_label_counted_qty)
+    val colProduct = stringResource(R.string.common_col_product)
+    val colVar = stringResource(R.string.common_col_variation)
+    val colRoll = stringResource(R.string.common_col_roll)
+    val colStatus = stringResource(R.string.common_col_status)
+    val colOpnameNumber = stringResource(R.string.opname_col_number)
+    val colWarehouse = stringResource(R.string.label_warehouse)
+    val colType = stringResource(R.string.opname_col_type)
+
     var opname by remember { mutableStateOf<JsonObject?>(null) }
     var countLoading by remember { mutableStateOf(false) }
     var countLoadedId by remember { mutableLongStateOf(-1L) }
@@ -148,22 +173,20 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
         WorkflowJson.envelopePage(res, page)
     }
     val listSortSearch = rememberTableSortSearch()
-    val opnameIndexColumns = remember {
-        listOf(
-            IndexColumnSpec("Opname #", 1.1f, { it.string("opname_number") ?: "" }) {
-                TableCell.Text(it.string("opname_number") ?: "—", bold = true)
-            },
-            IndexColumnSpec("Status", 0.85f, { it.string("status") ?: "" }) {
-                TableCell.Status(it.string("status"))
-            },
-            IndexColumnSpec("Warehouse", 1f, { it.obj("warehouse")?.string("name") ?: "" }) {
-                TableCell.Text(it.obj("warehouse")?.string("name") ?: "—")
-            },
-            IndexColumnSpec("Type", 0.75f, { it.string("opname_type") ?: "" }) {
-                TableCell.Text(DisplayFormat.status(it.string("opname_type") ?: ""))
-            },
-        )
-    }
+    val opnameIndexColumns = listOf(
+        IndexColumnSpec(colOpnameNumber, 1.1f, { it.string("opname_number") ?: "" }) {
+            TableCell.Text(it.string("opname_number") ?: emDash, bold = true)
+        },
+        IndexColumnSpec(colStatus, 0.85f, { it.string("status") ?: "" }) {
+            TableCell.Status(it.string("status"))
+        },
+        IndexColumnSpec(colWarehouse, 1f, { it.obj("warehouse")?.string("name") ?: "" }) {
+            TableCell.Text(it.obj("warehouse")?.string("name") ?: emDash)
+        },
+        IndexColumnSpec(colType, 0.75f, { it.string("opname_type") ?: "" }) {
+            TableCell.Text(UiStrings.apiStatus(it.string("opname_type") ?: ""))
+        },
+    )
 
     fun applyOpname(body: JsonObject?) {
         opname = body
@@ -178,7 +201,7 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                     productLabel = item.productName(),
                     productSku = item.productSku(),
                     variationLabel = item.variationLabel(),
-                    locationLabel = WorkflowJson.locationLabel(item.obj("warehouse_location")).ifBlank { "—" },
+                    locationLabel = WorkflowJson.locationLabel(item.obj("warehouse_location")).ifBlank { emDash },
                     systemQty = item.double("system_quantity") ?: 0.0,
                     countedQty = if (counted != null) DisplayFormat.qty(counted) else "",
                     variationValueId = item.long("variation_value_id"),
@@ -218,7 +241,7 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
         ) {
             val res = container.api.startStockOpnameCheck(id)
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-            applyOpname(WorkflowJson.envelopeObject(res) ?: error("Empty opname"))
+            applyOpname(WorkflowJson.envelopeObject(res) ?: error(errEmptyOpname))
             countLoadedId = id
             countLoading = false
             mergeOpnameDraft(id)
@@ -227,17 +250,17 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
     }
 
     val title = when (val current = step) {
-        OpnameStep.List -> "Stock opname"
-        OpnameStep.Create -> "New stock opname"
-        is OpnameStep.Count -> opname?.string("opname_number") ?: "Stock count"
+        OpnameStep.List -> opnameTitleList
+        OpnameStep.Create -> opnameTitleCreate
+        is OpnameStep.Count -> opname?.string("opname_number") ?: opnameTitleCountFallback
     }
 
     ErpScaffold(
         title = title,
         subtitle = when (val current = step) {
-            OpnameStep.List -> "Draft & ongoing counts"
-            OpnameStep.Create -> "Schedule a count for your warehouse"
-            is OpnameStep.Count -> DisplayFormat.status(opname?.string("status"))
+            OpnameStep.List -> stringResource(R.string.opname_subtitle_list)
+            OpnameStep.Create -> stringResource(R.string.opname_subtitle_create)
+            is OpnameStep.Count -> UiStrings.apiStatus(opname?.string("status"))
         },
         onBack = {
             when (step) {
@@ -248,7 +271,7 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
         },
     ) {
         message?.let {
-            StatusBanner(it, isError = it.contains("Error", true) || it.contains("Failed", true))
+            StatusBanner(it, isError = StatusMessage.looksLikeError(it))
         }
 
         when (val current = step) {
@@ -257,7 +280,7 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     LiveSyncIndicator(liveList.lastUpdatedMs)
                     ErpPrimaryButton(
-                        text = "New opname",
+                        text = stringResource(R.string.opname_btn_new),
                         onClick = {
                             message = null
                             createType = "cycle_count"
@@ -271,8 +294,8 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                     rows = liveList.rows,
                     columns = opnameIndexColumns,
                     sortSearch = listSortSearch,
-                    emptyText = "No stock opnames yet. Tap New opname to start.",
-                    searchPlaceholder = "Search opnames…",
+                    emptyText = stringResource(R.string.opname_empty_list),
+                    searchPlaceholder = stringResource(R.string.opname_search_placeholder),
                     loading = liveList.loading,
                     loadingMore = liveList.loadingMore,
                     hasMore = liveList.hasMore,
@@ -286,23 +309,26 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
             OpnameStep.Create -> {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "Warehouse: ${container.authStore.warehouseNameBlocking() ?: workspaceWhId?.toString() ?: "—"}",
+                        stringResource(
+                            R.string.opname_label_warehouse,
+                            container.authStore.warehouseNameBlocking() ?: workspaceWhId?.toString() ?: emDash,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     OutlinedTextField(
                         createType,
                         { createType = it },
-                        label = { Text("Type (full, partial, cycle_count)") },
+                        label = { Text(stringResource(R.string.opname_label_type)) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         createNotes,
                         { createNotes = it },
-                        label = { Text("Notes (optional)") },
+                        label = { Text(stringResource(R.string.opname_label_notes)) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     ErpPrimaryButton(
-                        text = "Create & start counting",
+                        text = stringResource(R.string.opname_btn_create_start),
                         loading = actionLoading,
                         onClick = {
                             val whId = workspaceWhId ?: return@ErpPrimaryButton
@@ -319,11 +345,11 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                                 val res = container.api.createStockOpname(body)
                                 if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res, authenticated = true))
                                 val created = WorkflowJson.envelopeObject(res)
-                                    ?: error("Empty opname response")
-                                val id = created.long("id") ?: error("Missing opname id")
+                                    ?: error(errEmptyOpnameResponse)
+                                val id = created.long("id") ?: error(errMissingOpnameId)
                                 val check = container.api.startStockOpnameCheck(id)
                                 if (!check.isSuccessful) error(ApiErrorParser.httpMessage(check, authenticated = true))
-                                applyOpname(WorkflowJson.envelopeObject(check) ?: error("Empty check"))
+                                applyOpname(WorkflowJson.envelopeObject(check) ?: error(errEmptyCheck))
                                 countLoadedId = id
                                 countLoading = false
                                 step = OpnameStep.Count(id)
@@ -343,7 +369,10 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                 val status = opname?.string("status")
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Warehouse: ${opname?.obj("warehouse")?.string("name") ?: "—"}",
+                        stringResource(
+                            R.string.opname_label_warehouse,
+                            opname?.obj("warehouse")?.string("name") ?: emDash,
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -357,19 +386,19 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                             label = buildString {
                                 append(line.productLabel)
                                 if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
-                                line.rollNumber?.let { append(" · roll ").append(it) }
+                                line.rollNumber?.let { append(stringResource(R.string.opname_line_roll_suffix, it)) }
                             },
                         )
                     }
                     WorkflowDataTable(
                         columns = listOf(
-                            DataTableColumn("Product", 0.95f),
-                            DataTableColumn("Var", 0.6f),
-                            DataTableColumn("Loc", 0.45f),
-                            DataTableColumn("Roll", 0.4f),
-                            DataTableColumn("Sys", 0.35f),
-                            DataTableColumn("Cnt", 0.35f),
-                            DataTableColumn("Δ", 0.3f),
+                            DataTableColumn(colProduct, 0.95f),
+                            DataTableColumn(colVar, 0.6f),
+                            DataTableColumn(stringResource(R.string.opname_col_location), 0.45f),
+                            DataTableColumn(colRoll, 0.4f),
+                            DataTableColumn(stringResource(R.string.opname_col_system), 0.35f),
+                            DataTableColumn(stringResource(R.string.opname_col_counted), 0.35f),
+                            DataTableColumn(stringResource(R.string.opname_col_variance), 0.3f),
                         ),
                         rowBackground = { index ->
                             lineHighlights[matchLines.getOrNull(index)?.key]
@@ -382,7 +411,7 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                             val rollLabel = when {
                                 line.rollNumber != null -> line.rollNumber
                                 line.isRoll && line.rollLength != null -> DisplayFormat.qty(line.rollLength)
-                                else -> "—"
+                                else -> emDash
                             }
                             listOf(
                                 TableCell.Text(
@@ -391,8 +420,8 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                                         if (line.productSku.isNotBlank()) append("\n").append(line.productSku)
                                     },
                                 ),
-                                TableCell.Text(line.variationLabel.ifBlank { "—" }),
-                                TableCell.Text(line.locationLabel.ifBlank { "—" }),
+                                TableCell.Text(line.variationLabel.ifBlank { emDash }),
+                                TableCell.Text(line.locationLabel.ifBlank { emDash }),
                                 TableCell.Text(rollLabel),
                                 TableCell.Text(
                                     formatQtyWithUnit(
@@ -402,17 +431,17 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                                     ),
                                 ),
                                 TableCell.Text(
-                                    if (line.countedQty.isBlank()) "—"
+                                    if (line.countedQty.isBlank()) emDash
                                     else formatQtyWithUnit(line.countedQty, line.quantityUnitSuffix, line.isRoll),
                                 ),
                                 TableCell.Text(
                                     variance?.let {
                                         formatQtyWithUnit(DisplayFormat.qty(it), line.quantityUnitSuffix, line.isRoll)
-                                    } ?: "—",
+                                    } ?: emDash,
                                 ),
                             )
                         },
-                        emptyText = "No stock lines in snapshot.",
+                        emptyText = stringResource(R.string.opname_empty_lines),
                     )
                     if (status != "approved") {
                         WorkflowLineScanSection(
@@ -435,19 +464,20 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                         )
                         lineEdits.forEachIndexed { index, line ->
                             val countLabel = if (line.isRoll) {
-                                WorkflowJson.rollLengthLabel(line.quantityUnitSuffix, "Counted length")
+                                WorkflowJson.rollLengthLabel(line.quantityUnitSuffix, labelCountedLength)
                             } else {
-                                "Counted qty"
+                                labelCountedQty
+                            }
+                            val productPart = buildString {
+                                append(line.productLabel)
+                                if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
+                                line.rollNumber?.let { append(stringResource(R.string.opname_line_roll_suffix, it)) }
                             }
                             OutlinedTextField(
                                 line.countedQty,
                                 { v -> lineEdits[index] = line.copy(countedQty = v) },
                                 label = {
-                                    Text(
-                                        "$countLabel — ${line.productLabel}" +
-                                            line.variationLabel.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty() +
-                                            line.rollNumber?.let { " · roll $it" }.orEmpty(),
-                                    )
+                                    Text(stringResource(R.string.opname_field_label_product, countLabel, productPart))
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -455,7 +485,7 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                     }
                     if (status != "approved") {
                         ErpPrimaryButton(
-                            text = "Save counts",
+                            text = stringResource(R.string.opname_btn_save_counts),
                             loading = actionLoading,
                             onClick = {
                                 scope.launchWorkflow(
@@ -496,14 +526,14 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                                     }
                                     applyOpname(WorkflowJson.envelopeObject(res))
                                     container.workflowDraftStore.clear("opname_lines_$opnameId")
-                                    "Counts saved"
+                                    msgCountsSaved
                                 }
                             },
                         )
                     }
                     if (status == "in_progress") {
                         ErpPrimaryButton(
-                            text = "Done counting",
+                            text = stringResource(R.string.opname_btn_done_counting),
                             loading = actionLoading,
                             onClick = {
                                 scope.launchWorkflow(
@@ -515,14 +545,14 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                                     if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                                     applyOpname(WorkflowJson.envelopeObject(res))
                                     liveList.refresh()
-                                    "Marked complete — ready to approve"
+                                    msgMarkedComplete
                                 }
                             },
                         )
                     }
                     if (status == "completed") {
                         ErpPrimaryButton(
-                            text = "Approve & adjust stock",
+                            text = stringResource(R.string.opname_btn_approve),
                             loading = actionLoading,
                             onClick = {
                                 scope.launchWorkflow(
@@ -537,7 +567,7 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                                     }
                                     applyOpname(WorkflowJson.envelopeObject(container.api.getStockOpname(opnameId)))
                                     liveList.refresh()
-                                    root?.get("message")?.asString ?: "Stock opname approved"
+                                    root?.get("message")?.asString ?: msgOpnameApproved
                                 }
                             },
                         )

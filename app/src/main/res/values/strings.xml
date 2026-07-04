@@ -1,4 +1,112 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ERPComplete RFID</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_connect">Connect</string>
+    <string name="nav_operations">Operations</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Common -->
+    <string name="action_cancel">Cancel</string>
+    <string name="action_change">Change</string>
+    <string name="action_save">Save</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_retry">Retry</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_not_connected">Not connected</string>
+    <string name="cd_refresh">Refresh</string>
+    <string name="cd_sign_out">Sign out</string>
+    <string name="cd_warehouse">Warehouse</string>
+    <string name="cd_change_workspace">Change workspace</string>
+    <string name="cd_open_workspace_picker">Open workspace picker</string>
+
+    <!-- Login -->
+    <string name="login_tagline">Warehouse scanning with Zebra RFD90</string>
+    <string name="login_welcome">Welcome back</string>
+    <string name="login_subtitle">Sign in with your ERP account</string>
+    <string name="login_email">Email</string>
+    <string name="login_password">Password</string>
+    <string name="login_show_password">Show password</string>
+    <string name="login_hide_password">Hide password</string>
+    <string name="login_sign_in">Sign in</string>
+    <string name="login_no_business_unit">No business unit assigned to this account.</string>
+    <string name="login_no_warehouse">No warehouse assigned to this account.</string>
+    <string name="login_api_debug">API: %1$s</string>
+
+    <!-- Workspace -->
+    <string name="workspace_none">No workspace selected</string>
+    <string name="workspace_tap_to_choose">Tap to choose business unit and warehouse</string>
+    <string name="workspace_team">Team: %1$s</string>
+    <string name="workspace_change_title">Change workspace?</string>
+    <string name="workspace_change_message">Unsaved work on open screens may be lost. Continue to pick another warehouse?</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_subtitle">Device &amp; workspace</string>
+    <string name="settings_section_language">Language</string>
+    <string name="settings_language_title">App language</string>
+    <string name="settings_language_subtitle">Choose display language</string>
+    <string name="settings_language_system">System default</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_indonesian">Indonesian</string>
+    <string name="settings_section_rfid">RFID reader</string>
+    <string name="settings_scan_profile_title">Scan profile</string>
+    <string name="settings_scan_profile_subtitle">Power and link rate for inventory</string>
+    <string name="settings_scan_range">Range</string>
+    <string name="settings_scan_range_desc">Max distance</string>
+    <string name="settings_scan_dense">Dense</string>
+    <string name="settings_scan_dense_desc">Crowded aisles</string>
+    <string name="settings_epc_prefilter_title">EPC pre-filter</string>
+    <string name="settings_epc_prefilter_subtitle">Hardware mask for company tag prefix</string>
+    <string name="settings_epc_prefilter_enable">Enable mask on reader</string>
+    <string name="settings_epc_prefix_label">Company EPC prefix</string>
+    <string name="settings_epc_prefix_placeholder">3034257B</string>
+    <string name="settings_epc_prefix_help">Hex only — used when no locate target is set</string>
+    <string name="settings_save_prefix">Save prefix</string>
+    <string name="settings_active_mask">Active: %1$s</string>
+    <string name="settings_diagnostics_title">Reader diagnostics</string>
+    <string name="settings_diagnostics_live">Live from RFD90</string>
+    <string name="settings_diagnostics_connect_first">Connect reader first</string>
+    <string name="settings_scanner_battery">Scanner battery</string>
+    <string name="settings_pair_reader_hint">Pair the RFD90 on the Connect tab to see firmware, battery, and Bluetooth details here.</string>
+    <string name="settings_firmware_title">Firmware update</string>
+    <string name="settings_firmware_subtitle">Check Zebra.com for RFD90 updates</string>
+    <string name="settings_firmware_auto_check">Auto-check when reader connects</string>
+    <string name="settings_firmware_installed">Installed: %1$s</string>
+    <string name="settings_firmware_checking">Checking…</string>
+    <string name="settings_firmware_check">Check for firmware update</string>
+    <string name="settings_firmware_download">Download from Zebra</string>
+    <string name="settings_firmware_install">Install on reader</string>
+    <string name="settings_firmware_notes_title">Firmware notes</string>
+    <string name="settings_firmware_notes_body">Updates are discovered from Zebra support pages via ERP, then downloaded and applied over Bluetooth. Keep battery above 20% and stay near the reader until it reboots. Encrypted .EDAT packages are not supported yet.</string>
+    <string name="settings_section_server">Server</string>
+    <string name="settings_api_url_label">API base URL</string>
+    <string name="settings_api_url_default">Default: %1$s</string>
+    <string name="settings_save_api_url">Save API URL</string>
+    <string name="settings_api_url_saved">API URL saved — restart app if requests fail</string>
+    <string name="settings_section_sync">Sync</string>
+    <string name="settings_pending_uploads">Pending uploads: %1$d</string>
+    <string name="settings_failed_batches">%1$d batch(es) failed after %2$d tries</string>
+    <string name="settings_retry_sync">Retry sync</string>
+    <string name="settings_discard_failed">Discard failed</string>
+    <string name="settings_section_tags">Tags</string>
+    <string name="settings_void_tag_label">Void damaged tag (EPC)</string>
+    <string name="settings_void_tag">Void tag</string>
+    <string name="settings_void_enter_epc">Enter an EPC</string>
+    <string name="settings_void_success">Tag voided</string>
+    <string name="settings_section_account">Account</string>
+    <string name="settings_sign_out">Sign out</string>
+    <string name="settings_version">ERPComplete RFID %1$s</string>
+
+    <!-- Diagnostics labels -->
+    <string name="diag_reader">Reader</string>
+    <string name="diag_model">Model</string>
+    <string name="diag_firmware">Firmware</string>
+    <string name="diag_serial">Serial</string>
+    <string name="diag_bluetooth">Bluetooth</string>
+    <string name="diag_profile">Profile</string>
+    <string name="diag_antennas">Antennas</string>
 </resources>

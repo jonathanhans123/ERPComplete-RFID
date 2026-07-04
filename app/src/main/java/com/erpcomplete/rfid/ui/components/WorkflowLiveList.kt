@@ -8,6 +8,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.erpcomplete.rfid.R
+import com.erpcomplete.rfid.util.DisplayFormat
 import com.erpcomplete.rfid.util.isBenignCancellation
 import com.google.gson.JsonObject
 import kotlinx.coroutines.CancellationException
@@ -33,6 +37,7 @@ fun rememberWorkflowLiveList(
     intervalMs: Long = 12_000,
     loader: suspend (page: Int) -> WorkflowListPage,
 ): WorkflowLiveListState {
+    val context = LocalContext.current
     var rows by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
@@ -74,7 +79,7 @@ fun rememberWorkflowLiveList(
             throw e
         } catch (e: Exception) {
             if (isActive && !e.isBenignCancellation()) {
-                error = e.message?.takeIf { it.isNotBlank() } ?: "Failed to load list"
+                error = e.message?.takeIf { it.isNotBlank() } ?: context.getString(R.string.list_load_error)
             }
         } finally {
             if (isActive) {
@@ -102,7 +107,7 @@ fun rememberWorkflowLiveList(
                 throw e
             } catch (e: Exception) {
                 if (isActive && !e.isBenignCancellation()) {
-                    error = e.message?.takeIf { it.isNotBlank() } ?: "Failed to refresh list"
+                    error = e.message?.takeIf { it.isNotBlank() } ?: context.getString(R.string.list_refresh_error)
                 }
             }
         }
@@ -123,10 +128,11 @@ fun rememberWorkflowLiveList(
 
 @Composable
 fun LiveSyncIndicator(lastUpdatedMs: Long?, modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
-    val label = com.erpcomplete.rfid.util.DisplayFormat.timeAgo(lastUpdatedMs)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val label = DisplayFormat.timeAgo(context, lastUpdatedMs)
     if (label.isBlank()) return
     androidx.compose.material3.Text(
-        text = "Synced $label",
+        text = stringResource(R.string.list_synced_ago, label),
         modifier = modifier,
         style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
         color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,

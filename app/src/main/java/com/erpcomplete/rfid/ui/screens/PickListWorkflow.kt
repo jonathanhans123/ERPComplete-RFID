@@ -23,7 +23,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.data.remote.UpdatePackCutRequest
 import com.erpcomplete.rfid.data.remote.UpdatePickListRequest
@@ -47,6 +49,8 @@ import com.erpcomplete.rfid.ui.components.rememberScanMatchColors
 import com.erpcomplete.rfid.ui.components.rememberWorkflowLiveList
 import com.erpcomplete.rfid.ui.components.rememberTableSortSearch
 import com.erpcomplete.rfid.util.ApiErrorParser
+import com.erpcomplete.rfid.util.StatusMessage
+import com.erpcomplete.rfid.ui.util.UiStrings
 import com.erpcomplete.rfid.util.DisplayFormat
 import com.erpcomplete.rfid.util.WorkflowJson
 import com.erpcomplete.rfid.util.WorkflowJson.array
@@ -159,6 +163,30 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val scanColors = rememberScanMatchColors()
 
+    val pickTitle = stringResource(R.string.pick_title)
+    val pickSubtitleList = stringResource(R.string.pick_subtitle_list)
+    val emDash = stringResource(R.string.display_empty)
+    val errEmptyPickList = stringResource(R.string.pick_error_empty_pick_list)
+    val errScanTagsFirst = stringResource(R.string.common_error_scan_tags_first)
+    val msgConfirmed = stringResource(R.string.common_success_confirmed)
+    val msgPickingSaved = stringResource(R.string.pick_success_picking_saved)
+    val msgPickingCompleted = stringResource(R.string.pick_success_picking_completed)
+    val msgPackCutSaved = stringResource(R.string.pick_success_pack_cut_saved)
+    val fallbackContainer = stringResource(R.string.pick_fallback_container)
+    val fallbackProduct = stringResource(R.string.pick_fallback_product)
+    val packCutContainerLabel = stringResource(R.string.pick_pack_cut_container)
+    val colProduct = stringResource(R.string.common_col_product)
+    val colVar = stringResource(R.string.common_col_variation)
+    val colRoll = stringResource(R.string.common_col_roll)
+    val colStatus = stringResource(R.string.common_col_status)
+    val colPickNumber = stringResource(R.string.pick_col_number)
+    val colWarehouse = stringResource(R.string.label_warehouse)
+    val colDate = stringResource(R.string.label_date)
+    val colRequested = stringResource(R.string.pick_col_requested)
+    val colPicked = stringResource(R.string.pick_col_picked)
+    val labelPickedLength = stringResource(R.string.pick_label_picked_length)
+    val labelPickedQty = stringResource(R.string.pick_label_picked_qty)
+
     var pickList by remember { mutableStateOf<JsonObject?>(null) }
     var pickLoading by remember { mutableStateOf(false) }
     var pickLoadedId by remember { mutableLongStateOf(-1L) }
@@ -187,22 +215,20 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
         WorkflowJson.envelopePage(res, page)
     }
     val listSortSearch = rememberTableSortSearch()
-    val pickIndexColumns = remember {
-        listOf(
-            IndexColumnSpec("Pick #", 1.1f, { it.string("pick_list_number") ?: "" }) {
-                TableCell.Text(it.string("pick_list_number") ?: "—", bold = true)
-            },
-            IndexColumnSpec("Status", 0.85f, { it.string("pick_status") ?: "" }) {
-                TableCell.Status(it.string("pick_status"))
-            },
-            IndexColumnSpec("Warehouse", 1f, { it.obj("warehouse")?.string("name") ?: "" }) {
-                TableCell.Text(it.obj("warehouse")?.string("name") ?: "—")
-            },
-            IndexColumnSpec("Date", 0.75f, { it.string("pick_date") ?: "" }) {
-                TableCell.Date(it.string("pick_date"))
-            },
-        )
-    }
+    val pickIndexColumns = listOf(
+        IndexColumnSpec(colPickNumber, 1.1f, { it.string("pick_list_number") ?: "" }) {
+            TableCell.Text(it.string("pick_list_number") ?: emDash, bold = true)
+        },
+        IndexColumnSpec(colStatus, 0.85f, { it.string("pick_status") ?: "" }) {
+            TableCell.Status(it.string("pick_status"))
+        },
+        IndexColumnSpec(colWarehouse, 1f, { it.obj("warehouse")?.string("name") ?: "" }) {
+            TableCell.Text(it.obj("warehouse")?.string("name") ?: emDash)
+        },
+        IndexColumnSpec(colDate, 0.75f, { it.string("pick_date") ?: "" }) {
+            TableCell.Date(it.string("pick_date"))
+        },
+    )
 
     fun applyPickList(body: JsonObject?) {
         val resolved = unwrapPickList(body)
@@ -241,10 +267,10 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                 val container = containerEl.asJsonObject
                 val containerLabel = container.string("container_name")
                     ?: container.string("container_number")
-                    ?: "Container"
+                    ?: fallbackContainer
                 container.array("container_items")?.forEach { ciEl ->
                     val ci = ciEl.asJsonObject
-                    val product = ci.obj("product")?.string("name") ?: "Product"
+                    val product = ci.obj("product")?.string("name") ?: fallbackProduct
                     val variation = ci.variationLabel().ifBlank { ci.obj("pick_list_item")?.variationLabel().orEmpty() }
                     val sku = ci.productSku()
                     containerEdits.add(
@@ -301,7 +327,7 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
         ) {
             val res = container.api.getPickList(id)
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-            applyPickList(WorkflowJson.envelopeObject(res) ?: error("Empty pick list"))
+            applyPickList(WorkflowJson.envelopeObject(res) ?: error(errEmptyPickList))
             pickLoadedId = id
             pickLoading = false
             mergePickDraft(id)
@@ -324,12 +350,12 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
 
     ErpScaffold(
         title = when (step) {
-            PickStep.List -> "Pick list"
-            is PickStep.Detail -> pickList?.string("pick_list_number") ?: "Pick list"
+            PickStep.List -> pickTitle
+            is PickStep.Detail -> pickList?.string("pick_list_number") ?: pickTitle
         },
         subtitle = when (step) {
-            PickStep.List -> "Tap a row · auto-syncs"
-            is PickStep.Detail -> DisplayFormat.status(pickList?.string("pick_status"))
+            PickStep.List -> pickSubtitleList
+            is PickStep.Detail -> UiStrings.apiStatus(pickList?.string("pick_status"))
         },
         onBack = {
             when (step) {
@@ -340,7 +366,7 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
     ) {
         message?.let {
             if (!it.isBenignCancellationMessage()) {
-                StatusBanner(it, isError = it.contains("Error", true))
+                StatusBanner(it, isError = StatusMessage.looksLikeError(it))
             }
         }
 
@@ -352,8 +378,8 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                     rows = liveList.rows,
                     columns = pickIndexColumns,
                     sortSearch = listSortSearch,
-                    emptyText = "No pick lists.",
-                    searchPlaceholder = "Search pick lists…",
+                    emptyText = stringResource(R.string.pick_empty_list),
+                    searchPlaceholder = stringResource(R.string.pick_search_placeholder),
                     loading = liveList.loading,
                     loadingMore = liveList.loadingMore,
                     hasMore = liveList.hasMore,
@@ -370,8 +396,8 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                     PickListDetailSkeleton(Modifier.weight(1f))
                 } else {
                 TabRow(detailTab) {
-                    Tab(selected = detailTab == 0, onClick = { detailTab = 0 }, text = { Text("Pick") })
-                    Tab(selected = detailTab == 1, onClick = { detailTab = 1 }, text = { Text("Pack & cut") })
+                    Tab(selected = detailTab == 0, onClick = { detailTab = 0 }, text = { Text(stringResource(R.string.pick_tab_pick)) })
+                    Tab(selected = detailTab == 1, onClick = { detailTab = 1 }, text = { Text(stringResource(R.string.pick_tab_pack_cut)) })
                 }
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (detailTab == 0) {
@@ -385,18 +411,18 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                                 label = buildString {
                                     append(line.productLabel)
                                     if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
-                                    line.rollNumber?.let { append(" · roll ").append(it) }
+                                    line.rollNumber?.let { append(stringResource(R.string.pick_line_roll_suffix, it)) }
                                 },
                             )
                         }
                         WorkflowDataTable(
                             columns = listOf(
-                                DataTableColumn("Product", 0.95f),
-                                DataTableColumn("Var", 0.55f),
-                                DataTableColumn("Roll", 0.45f),
-                                DataTableColumn("Req", 0.4f),
-                                DataTableColumn("Picked", 0.45f),
-                                DataTableColumn("Status", 0.65f),
+                                DataTableColumn(colProduct, 0.95f),
+                                DataTableColumn(colVar, 0.55f),
+                                DataTableColumn(colRoll, 0.45f),
+                                DataTableColumn(colRequested, 0.4f),
+                                DataTableColumn(colPicked, 0.45f),
+                                DataTableColumn(colStatus, 0.65f),
                             ),
                             rowBackground = { index ->
                                 lineHighlights[matchLines.getOrNull(index)?.key]
@@ -412,36 +438,38 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                                 }
                                 val rollLabel = line.rollNumber
                                     ?: line.rollLength?.let { DisplayFormat.qty(it) }
-                                    ?: if (line.isRoll) "—" else ""
+                                    ?: if (line.isRoll) emDash else ""
                                 listOf(
                                     TableCell.Text(line.productLabel),
-                                    TableCell.Text(line.variationLabel.ifBlank { "—" }),
-                                    TableCell.Text(rollLabel.ifBlank { "—" }),
+                                    TableCell.Text(line.variationLabel.ifBlank { emDash }),
+                                    TableCell.Text(rollLabel.ifBlank { emDash }),
                                     TableCell.Text(qtyWithUnit(DisplayFormat.qty(line.requested), line.quantityUnitSuffix, line.isRoll)),
                                     TableCell.Text(qtyWithUnit(line.picked, line.quantityUnitSuffix, line.isRoll)),
                                     TableCell.Status(status),
                                 )
                             },
-                            emptyText = "No pick lines.",
+                            emptyText = stringResource(R.string.pick_empty_lines),
                         )
                         lineEdits.forEachIndexed { index, line ->
                             val pickLabel = if (line.isRoll) {
-                                WorkflowJson.rollLengthLabel(line.quantityUnitSuffix, "Picked length")
+                                WorkflowJson.rollLengthLabel(line.quantityUnitSuffix, labelPickedLength)
                             } else {
-                                "Picked qty"
+                                labelPickedQty
                             }
                             OutlinedTextField(
                                 line.picked,
                                 { v -> lineEdits[index] = line.copy(picked = v) },
                                 label = {
                                     Text(
-                                        buildString {
-                                            append(pickLabel)
-                                            append(" — ")
-                                            append(line.productLabel)
-                                            if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
-                                            line.rollNumber?.let { append(" · roll ").append(it) }
-                                        },
+                                        stringResource(
+                                            R.string.pick_field_label_product,
+                                            pickLabel,
+                                            buildString {
+                                                append(line.productLabel)
+                                                if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
+                                                line.rollNumber?.let { append(stringResource(R.string.pick_line_roll_suffix, it)) }
+                                            },
+                                        ),
                                     )
                                 },
                                 modifier = Modifier.fillMaxWidth(),
@@ -463,13 +491,13 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                             onLineHighlightsChanged = { lineHighlights = it },
                             onClear = { container.rfidManager.clearScannedTags() },
                         )
-                        ErpPrimaryButton(text = "Sync picks to server", onClick = {
+                        ErpPrimaryButton(text = stringResource(R.string.pick_btn_sync_picks), onClick = {
                             scope.launchWorkflow(
                                 onError = { message = it },
                                 onSuccess = { message = it },
                             ) {
                                 val epcs = tags.map { it.epc }
-                                if (epcs.isEmpty()) error("Scan tags first")
+                                if (epcs.isEmpty()) error(errScanTagsFirst)
                                 val res = container.api.pickRfidConfirm(
                                     pickId,
                                     WorkflowScanRequest(epcs, UUID.randomUUID().toString()),
@@ -486,10 +514,10 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                                         lineEdits[idx] = lineEdits[idx].copy(picked = DisplayFormat.qty(scanned))
                                     }
                                 }
-                                res.body()?.message ?: "Confirmed"
+                                res.body()?.message ?: msgConfirmed
                             }
                         })
-                        ErpPrimaryButton(text = "Save picking", loading = actionLoading, onClick = {
+                        ErpPrimaryButton(text = stringResource(R.string.pick_btn_save_picking), loading = actionLoading, onClick = {
                             scope.launchWorkflow(
                                 setLoading = { actionLoading = it },
                                 onError = { message = it },
@@ -507,10 +535,10 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                                 if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res, authenticated = true))
                                 applyPickList(unwrapPickList(WorkflowJson.envelopeObject(res)))
                                 container.workflowDraftStore.clear("pick_lines_$pickId")
-                                "Picking saved"
+                                msgPickingSaved
                             }
                         })
-                        ErpPrimaryButton(text = "Complete picking", loading = actionLoading, onClick = {
+                        ErpPrimaryButton(text = stringResource(R.string.pick_btn_complete_picking), loading = actionLoading, onClick = {
                             scope.launchWorkflow(
                                 setLoading = { actionLoading = it },
                                 onError = { message = it },
@@ -529,17 +557,17 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                                 applyPickList(unwrapPickList(WorkflowJson.envelopeObject(res)))
                                 container.workflowDraftStore.clear("pick_lines_$pickId")
                                 detailTab = 1
-                                "Picking completed"
+                                msgPickingCompleted
                             }
                         })
                     } else {
                         if (containerEdits.isNotEmpty()) {
-                            Text("Container packing", style = MaterialTheme.typography.labelMedium)
+                            Text(stringResource(R.string.pick_section_container_packing), style = MaterialTheme.typography.labelMedium)
                             WorkflowDataTable(
                                 columns = listOf(
-                                    DataTableColumn("Assignment", 1.4f),
-                                    DataTableColumn("Picked", 0.45f),
-                                    DataTableColumn("Packed", 0.45f),
+                                    DataTableColumn(stringResource(R.string.pick_col_assignment), 1.4f),
+                                    DataTableColumn(colPicked, 0.45f),
+                                    DataTableColumn(stringResource(R.string.pick_col_packed), 0.45f),
                                 ),
                                 rows = containerEdits.map { line ->
                                     listOf(
@@ -548,82 +576,85 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                                         TableCell.Text(line.packed),
                                     )
                                 },
-                                emptyText = "No container lines.",
+                                emptyText = stringResource(R.string.pick_empty_container_lines),
                             )
                             containerEdits.forEachIndexed { index, line ->
                                 OutlinedTextField(
                                     line.packed,
                                     { v -> containerEdits[index] = line.copy(packed = v) },
-                                    label = { Text("Packed — ${line.label}") },
+                                    label = { Text(stringResource(R.string.pick_label_packed_container, line.label)) },
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
                         }
                         WorkflowDataTable(
                             columns = listOf(
-                                DataTableColumn("Product", 0.9f),
-                                DataTableColumn("Var", 0.5f),
-                                DataTableColumn("Roll", 0.4f),
-                                DataTableColumn("Picked", 0.4f),
-                                DataTableColumn("Pack/Cut", 0.5f),
+                                DataTableColumn(colProduct, 0.9f),
+                                DataTableColumn(colVar, 0.5f),
+                                DataTableColumn(colRoll, 0.4f),
+                                DataTableColumn(colPicked, 0.4f),
+                                DataTableColumn(stringResource(R.string.pick_col_pack_cut), 0.5f),
                             ),
                             rows = lineEdits.map { line ->
                                 val rollLabel = line.rollNumber
                                     ?: line.rollLength?.let { DisplayFormat.qty(it) }
-                                    ?: if (line.isRoll) "—" else ""
+                                    ?: if (line.isRoll) emDash else ""
                                 val packCut = when {
-                                    line.isRoll -> line.cutLengths.ifBlank { "—" }
-                                    line.hasContainerAssignments -> "container"
+                                    line.isRoll -> line.cutLengths.ifBlank { emDash }
+                                    line.hasContainerAssignments -> packCutContainerLabel
                                     else -> line.packed
                                 }
                                 listOf(
                                     TableCell.Text(line.productLabel),
-                                    TableCell.Text(line.variationLabel.ifBlank { "—" }),
-                                    TableCell.Text(rollLabel.ifBlank { "—" }),
+                                    TableCell.Text(line.variationLabel.ifBlank { emDash }),
+                                    TableCell.Text(rollLabel.ifBlank { emDash }),
                                     TableCell.Text(qtyWithUnit(line.picked, line.quantityUnitSuffix, line.isRoll)),
                                     TableCell.Text(packCut),
                                 )
                             },
-                            emptyText = "No lines.",
+                            emptyText = stringResource(R.string.pick_empty_pack_lines),
                         )
                         lineEdits.forEachIndexed { index, line ->
                             when {
                                 line.isRoll -> {
+                                    val unit = line.quantityUnitSuffix ?: "m"
+                                    val productPart = buildString {
+                                        append(line.productLabel)
+                                        if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
+                                        line.rollNumber?.let { append(stringResource(R.string.pick_line_roll_suffix, it)) }
+                                    }
                                     OutlinedTextField(
                                         line.cutLengths,
                                         { v -> lineEdits[index] = line.copy(cutLengths = v) },
                                         label = {
-                                            Text(
-                                                "Cut lengths (${line.quantityUnitSuffix ?: "m"}) — ${line.productLabel}" +
-                                                    line.variationLabel.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty() +
-                                                    line.rollNumber?.let { " · roll $it" }.orEmpty(),
-                                            )
+                                            Text(stringResource(R.string.pick_label_cut_lengths, unit, productPart))
                                         },
                                         modifier = Modifier.fillMaxWidth(),
                                         minLines = 2,
                                     )
                                     Text(
-                                        "Enter one or more lengths separated by commas (e.g. 2.5, 1.0). Total must match requested.",
+                                        stringResource(R.string.pick_cut_lengths_hint),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                                 !line.hasContainerAssignments -> {
+                                    val productPart = buildString {
+                                        append(line.productLabel)
+                                        if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
+                                    }
                                     OutlinedTextField(
                                         line.packed,
                                         { v -> lineEdits[index] = line.copy(packed = v) },
                                         label = {
-                                            Text(
-                                                "Packed qty — ${line.productLabel}" +
-                                                    line.variationLabel.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
-                                            )
+                                            Text(stringResource(R.string.pick_label_packed_qty, productPart))
                                         },
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
                             }
                         }
-                        ErpPrimaryButton(text = "Save pack & cut", loading = actionLoading, onClick = {
+                        ErpPrimaryButton(text = stringResource(R.string.pick_btn_save_pack_cut), loading = actionLoading, onClick = {
                             scope.launchWorkflow(
                                 setLoading = { actionLoading = it },
                                 onError = { message = it },
@@ -657,7 +688,7 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                                 )
                                 if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                                 applyPickList(unwrapPickList(WorkflowJson.envelopeObject(res)))
-                                "Pack & cut saved"
+                                msgPackCutSaved
                             }
                         })
                     }

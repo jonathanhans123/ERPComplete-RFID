@@ -6,6 +6,9 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.sync.SyncWorker
+import com.erpcomplete.rfid.util.ApiErrorParser
+import com.erpcomplete.rfid.util.LocaleHelper
+import com.erpcomplete.rfid.ui.util.UiStrings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,6 +24,9 @@ class ErpCompleteRfidApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        ApiErrorParser.init(this)
+        UiStrings.init(this)
+        LocaleHelper.apply(this, container.localeSettingsStore.languageTagBlocking())
         container.syncRepository.start(appScope)
         scheduleSync()
     }

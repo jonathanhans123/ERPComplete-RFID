@@ -1,6 +1,7 @@
 package com.erpcomplete.rfid.util
 
 import com.erpcomplete.rfid.ui.navigation.Routes
+import com.erpcomplete.rfid.ui.util.UiStrings
 import com.erpcomplete.rfid.util.WorkflowJson.double
 import com.erpcomplete.rfid.util.WorkflowJson.isRollStockLine
 import com.erpcomplete.rfid.util.WorkflowJson.long
@@ -31,7 +32,8 @@ data class StockLinePreset(
 fun Map<String, Any?>.toStockLinePreset(): StockLinePreset? {
     val product = this["product"] as? Map<String, Any?> ?: return null
     val productId = product["id"]?.toString()?.toLongOrNull() ?: return null
-    val productLabel = product["name"]?.toString()?.takeIf { it.isNotBlank() } ?: "Product #$productId"
+    val productLabel = product["name"]?.toString()?.takeIf { it.isNotBlank() }
+        ?: UiStrings.productFallback(productId)
     val variation = this["variation"] as? Map<String, Any?>
     val variationId = variation?.get("id")?.toString()?.toLongOrNull()
     val variationLabel = variation?.get("value")?.toString()
@@ -126,7 +128,7 @@ fun parseInventoryDeepLink(
     if (flow.isNullOrBlank() || productId <= 0L) return null
     return StockLinePreset(
         productId = productId,
-        productLabel = productName?.takeIf { it.isNotBlank() } ?: "Product #$productId",
+        productLabel = productName?.takeIf { it.isNotBlank() } ?: UiStrings.productFallback(productId),
         variationValueId = variationId.takeIf { it > 0L },
         variationLabel = variationName,
         locationId = locationId.takeIf { it != 0L },

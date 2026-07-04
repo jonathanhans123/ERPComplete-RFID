@@ -5,6 +5,7 @@ import com.erpcomplete.rfid.data.model.WorkspaceOption
 import com.erpcomplete.rfid.data.model.WorkspacesPayload
 import com.erpcomplete.rfid.data.remote.ApiEnvelope
 import com.erpcomplete.rfid.ui.components.WorkflowListPage
+import com.erpcomplete.rfid.ui.util.UiStrings
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -39,7 +40,7 @@ object WorkflowJson {
 
     fun JsonObject.productName(): String {
         obj("product")?.string("name")?.let { return it }
-        return string("product_name") ?: "—"
+        return string("product_name") ?: UiStrings.emDash()
     }
 
     fun JsonObject.productSku(): String {
@@ -155,10 +156,10 @@ object WorkflowJson {
         val businessUnitId = row.long("business_unit_id") ?: return null
         return WorkspaceOption(
             warehouseId = warehouseId,
-            warehouseName = row.string("warehouse_name") ?: "Warehouse #$warehouseId",
+            warehouseName = row.string("warehouse_name") ?: UiStrings.warehouseFallbackName(warehouseId),
             warehouseCode = row.string("warehouse_code"),
             businessUnitId = businessUnitId,
-            businessUnitName = row.string("business_unit_name") ?: "Business unit",
+            businessUnitName = row.string("business_unit_name") ?: UiStrings.businessUnitFallback(),
             teamId = row.long("team_id"),
             teamName = row.string("team_name"),
         )
@@ -176,7 +177,7 @@ object WorkflowJson {
                     val id = bu.long("id") ?: return@mapNotNull null
                     BusinessUnitSummary(
                         id = id,
-                        name = bu.string("name") ?: "Business unit",
+                        name = bu.string("name") ?: UiStrings.businessUnitFallback(),
                         warehouseCount = bu.int("warehouse_count") ?: 0,
                     )
                 }

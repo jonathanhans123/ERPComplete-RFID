@@ -1,6 +1,7 @@
 package com.erpcomplete.rfid.sync
 
 import com.erpcomplete.rfid.data.SessionCache
+import com.erpcomplete.rfid.ui.util.UiStrings
 import com.erpcomplete.rfid.data.local.PendingSyncDao
 import com.erpcomplete.rfid.data.local.PendingSyncEntity
 import com.erpcomplete.rfid.data.remote.ErpApiService
@@ -120,7 +121,7 @@ class SyncRepository(
                 dao.delete(item.id)
                 flushed++
             } else {
-                dao.markFailed(item.id, "HTTP error")
+                dao.markFailed(item.id, UiStrings.httpSyncError())
             }
         }
         refreshPendingCount()

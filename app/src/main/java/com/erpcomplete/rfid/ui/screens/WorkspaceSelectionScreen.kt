@@ -34,8 +34,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.data.model.BusinessUnitSummary
 import com.erpcomplete.rfid.data.model.WorkspaceOption
@@ -60,6 +63,7 @@ fun WorkspaceSelectionScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val userName by container.authStore.userName.collectAsState(initial = null)
     val currentWarehouseId by container.authStore.warehouseId.collectAsState(initial = null)
     val currentBusinessUnitId by container.authStore.businessUnitId.collectAsState(initial = null)
@@ -77,7 +81,7 @@ fun WorkspaceSelectionScreen(
             val loaded = WorkflowJson.envelopeWorkspacesPayload(res)
             payload = loaded
             if (loaded.businessUnits.isEmpty()) {
-                error = "No business unit assigned to this account. Contact your administrator."
+                error = context.getString(R.string.workspace_no_business_unit_admin)
             }
         } catch (e: Exception) {
             error = ApiErrorParser.networkMessage(e)
@@ -103,7 +107,7 @@ fun WorkspaceSelectionScreen(
         .sortedBy { it.warehouseName.lowercase() }
 
     ErpScaffold(
-        title = "Select workspace",
+        title = stringResource(R.string.workspace_select_title),
         subtitle = userName?.takeIf { it.isNotBlank() },
         actions = {
             TextButton(onClick = {
@@ -111,12 +115,12 @@ fun WorkspaceSelectionScreen(
                     container.authStore.clear()
                     onLogout()
                 }
-            }) { Text("Logout") }
+            }) { Text(stringResource(R.string.action_logout)) }
         },
     ) {
         ErpGradientHeader(
-            title = "Where are you working?",
-            subtitle = "Choose business unit, then warehouse — team is set automatically",
+            title = stringResource(R.string.workspace_header_title),
+            subtitle = stringResource(R.string.workspace_header_subtitle),
         )
 
         error?.let { StatusBanner(it, isError = true) }
@@ -131,7 +135,7 @@ fun WorkspaceSelectionScreen(
                 if (businessUnits.isNotEmpty()) {
                     ErpCard {
                         Text(
-                            "Business unit",
+                            stringResource(R.string.label_business_unit),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -152,7 +156,7 @@ fun WorkspaceSelectionScreen(
                 ErpCard {
                     val selectedBuName = businessUnits.firstOrNull { it.id == selectedBuId }?.name
                     Text(
-                        "Warehouse",
+                        stringResource(R.string.label_warehouse),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -167,13 +171,13 @@ fun WorkspaceSelectionScreen(
                     Spacer(Modifier.height(10.dp))
                     if (selectedBuId == null) {
                         Text(
-                            "Select a business unit first",
+                            stringResource(R.string.workspace_select_bu_first),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else if (warehousesForBu.isEmpty()) {
                         Text(
-                            "No warehouses assigned for this business unit.",
+                            stringResource(R.string.workspace_no_warehouses),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -185,8 +189,10 @@ fun WorkspaceSelectionScreen(
                                     isCurrent = currentWarehouseId == workspace.warehouseId.toString(),
                                     onClick = {
                                         if (workspace.teamId == null) {
-                                            error =
-                                                "${workspace.warehouseName} has no team mapped. Contact your administrator."
+                                            error = context.getString(
+                                                R.string.workspace_no_team_mapped,
+                                                workspace.warehouseName,
+                                            )
                                             return@WarehouseOptionCard
                                         }
                                         scope.launch {
@@ -266,16 +272,16 @@ private fun BusinessUnitOptionCard(
             )
             Text(
                 when (businessUnit.warehouseCount) {
-                    0 -> "No warehouses"
-                    1 -> "1 warehouse"
-                    else -> "${businessUnit.warehouseCount} warehouses"
+                    0 -> stringResource(R.string.workspace_bu_warehouse_count_zero)
+                    1 -> stringResource(R.string.workspace_bu_warehouse_count_one)
+                    else -> stringResource(R.string.workspace_bu_warehouse_count_other, businessUnit.warehouseCount)
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (isCurrent) {
                 Text(
-                    "Current unit",
+                    stringResource(R.string.workspace_current_unit),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -332,7 +338,7 @@ private fun WarehouseOptionCard(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "Team: $team",
+                        stringResource(R.string.workspace_team, team),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -340,7 +346,7 @@ private fun WarehouseOptionCard(
             }
             if (isCurrent) {
                 Text(
-                    "Current warehouse",
+                    stringResource(R.string.workspace_current_warehouse),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(top = 4.dp),

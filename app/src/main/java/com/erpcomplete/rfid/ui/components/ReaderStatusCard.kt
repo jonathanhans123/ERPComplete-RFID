@@ -15,9 +15,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.rfid.ReaderDiagnostics
 
 @Composable
@@ -29,12 +31,12 @@ fun ReaderStatusCard(
     ErpCard(modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                diagnostics.readerName ?: "RFD90",
+                diagnostics.readerName ?: stringResource(R.string.reader_default_name),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                "Scanner battery",
+                stringResource(R.string.settings_scanner_battery),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -64,23 +66,23 @@ fun ReaderSerialBlock(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Default.Tag, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Icon(Icons.Default.Tag, contentDescription = stringResource(R.string.cd_serial_tag), tint = MaterialTheme.colorScheme.primary)
             Text(
-                "Reader serial (S/N)",
+                stringResource(R.string.reader_serial_label),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
             )
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            serialNumber ?: "Not reported by reader yet",
+            serialNumber ?: stringResource(R.string.reader_serial_not_reported),
             style = MaterialTheme.typography.titleMedium,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
         )
         if (serialNumber == null && !readerName.isNullOrBlank()) {
             Text(
-                "Bluetooth name: $readerName",
+                stringResource(R.string.reader_bluetooth_name, readerName),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -88,7 +90,7 @@ fun ReaderSerialBlock(
         if (showHelp) {
             Spacer(Modifier.height(6.dp))
             Text(
-                "On the back label: S/N is for identification and support. Configure sled Wi‑Fi with 123RFID Desktop if needed.",
+                stringResource(R.string.reader_serial_help),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 2.dp),

@@ -17,8 +17,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.util.ApiErrorParser
 import com.erpcomplete.rfid.util.DisplayFormat
@@ -50,6 +54,7 @@ fun rememberHomeAnalytics(
     workspaceKey: String = "",
     refreshIntervalMs: Long = 30_000,
 ): HomeAnalyticsState {
+    val context = LocalContext.current
     var snapshot by remember { mutableStateOf(HomeAnalyticsSnapshot(readerOnline = readerOnline, syncPending = syncPending)) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -78,7 +83,7 @@ fun rememberHomeAnalytics(
             throw e
         } catch (e: Exception) {
             if (!e.isBenignCancellation()) {
-                error = e.message?.takeIf { it.isNotBlank() } ?: "Could not load analytics"
+                error = e.message?.takeIf { it.isNotBlank() } ?: context.getString(R.string.home_analytics_load_error)
             }
         } finally {
             loading = false
@@ -163,6 +168,7 @@ fun HomeAnalyticsSection(
     onReceiveClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             Modifier.fillMaxWidth(),
@@ -170,10 +176,10 @@ fun HomeAnalyticsSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column {
-                Text("Work queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.home_work_queue_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 state.snapshot.lastUpdatedMs?.let { ms ->
                     Text(
-                        "Updated ${DisplayFormat.timeAgo(ms)}",
+                        stringResource(R.string.home_updated_ago, DisplayFormat.timeAgo(context, ms)),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -191,43 +197,45 @@ fun HomeAnalyticsSection(
         } else {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             HomeMetricCard(
-                label = "Putaway",
+                label = stringResource(R.string.home_metric_putaway),
                 value = state.snapshot.putawayOpen,
-                hint = "open tasks",
+                hint = stringResource(R.string.home_metric_putaway_hint),
                 modifier = Modifier.weight(1f),
                 onClick = onPutawayClick,
             )
             HomeMetricCard(
-                label = "Pick lists",
+                label = stringResource(R.string.home_metric_pick_lists),
                 value = state.snapshot.pickOpen,
-                hint = "to pick",
+                hint = stringResource(R.string.home_metric_pick_hint),
                 modifier = Modifier.weight(1f),
                 onClick = onPickClick,
             )
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             HomeMetricCard(
-                label = "Stock opname",
+                label = stringResource(R.string.home_metric_opname),
                 value = state.snapshot.opnameActive,
-                hint = "counting",
+                hint = stringResource(R.string.home_metric_opname_hint),
                 modifier = Modifier.weight(1f),
                 onClick = onOpnameClick,
             )
             HomeMetricCard(
-                label = "Receipts",
+                label = stringResource(R.string.home_metric_receipts),
                 value = state.snapshot.receiptsDraft,
-                hint = "pending / partial",
+                hint = stringResource(R.string.home_metric_receipts_hint),
                 modifier = Modifier.weight(1f),
                 onClick = onReceiveClick,
             )
         }
         }
         ErpCard {
-            Text("Session", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.home_session_title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text(
-                        if (state.snapshot.readerOnline) "Reader online" else "Reader offline",
+                        stringResource(
+                            if (state.snapshot.readerOnline) R.string.reader_status_online else R.string.reader_status_offline,
+                        ),
                         style = MaterialTheme.typography.titleMedium,
                         color = if (state.snapshot.readerOnline) {
                             MaterialTheme.colorScheme.primary
@@ -237,9 +245,9 @@ fun HomeAnalyticsSection(
                     )
                     Text(
                         if (state.snapshot.syncPending > 0) {
-                            "${state.snapshot.syncPending} scan(s) waiting to sync"
+                            pluralStringResource(R.plurals.sync_scans_waiting, state.snapshot.syncPending, state.snapshot.syncPending)
                         } else {
-                            "All scans synced"
+                            stringResource(R.string.sync_all_synced)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -253,7 +261,7 @@ fun HomeAnalyticsSection(
                 )
             }
             Text(
-                "Total open warehouse tasks",
+                stringResource(R.string.home_total_open_tasks),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

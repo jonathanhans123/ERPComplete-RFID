@@ -49,9 +49,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.annotation.StringRes
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.data.remote.CreateGoodsReceiptItem
 import com.erpcomplete.rfid.data.remote.CreateGoodsReceiptRequest
@@ -80,6 +85,8 @@ import com.erpcomplete.rfid.ui.components.scanIncrementDelta
 import com.erpcomplete.rfid.ui.components.shouldIncrementQtyOnScan
 import com.erpcomplete.rfid.ui.components.rememberScanMatchColors
 import com.erpcomplete.rfid.util.ApiErrorParser
+import com.erpcomplete.rfid.util.StatusMessage
+import com.erpcomplete.rfid.ui.util.UiStrings
 import com.erpcomplete.rfid.util.DisplayFormat
 import com.erpcomplete.rfid.util.PickerMappers
 import com.erpcomplete.rfid.util.WorkflowJson
@@ -155,6 +162,7 @@ private data class GrLineDraft(
 
 private fun parseGrLineItem(
     item: JsonObject,
+    productFallback: String,
     rollNumber: String? = null,
     rollLengthHint: Double? = null,
     packingListItemId: Long? = null,
@@ -167,7 +175,7 @@ private fun parseGrLineItem(
         productId = item.long("product_id") ?: 0L,
         variationValueId = item.long("variation_value_id"),
         variationLabel = item.variationLabel(),
-        productName = item.string("product_name") ?: "Product",
+        productName = item.string("product_name") ?: productFallback,
         productSku = item.string("product_sku"),
         orderedQty = item.double("ordered_quantity") ?: 0.0,
         previouslyReceived = item.double("previously_received") ?: 0.0,
@@ -183,7 +191,7 @@ private fun parseGrLineItem(
     )
 }
 
-private fun parseGrSourceLines(items: List<JsonObject>): List<GrLineDraft> {
+private fun parseGrSourceLines(items: List<JsonObject>, productFallback: String): List<GrLineDraft> {
     val lines = mutableListOf<GrLineDraft>()
     items.forEach { item ->
         val isRoll = item.get("is_roll_product")?.asBoolean == true || item.isRollStockLine()
@@ -195,6 +203,7 @@ private fun parseGrSourceLines(items: List<JsonObject>): List<GrLineDraft> {
                     lines.add(
                         parseGrLineItem(
                             item = item,
+                            productFallback = productFallback,
                             rollNumber = pi.string("roll_number"),
                             rollLengthHint = pi.double("length") ?: pi.double("roll_length"),
                             packingListItemId = pi.long("id"),
@@ -203,9 +212,9 @@ private fun parseGrSourceLines(items: List<JsonObject>): List<GrLineDraft> {
                 }
             }
             isRoll && !item.string("roll_number").isNullOrBlank() -> {
-                lines.add(parseGrLineItem(item))
+                lines.add(parseGrLineItem(item, productFallback))
             }
-            else -> lines.add(parseGrLineItem(item))
+            else -> lines.add(parseGrLineItem(item, productFallback))
         }
     }
     return lines
@@ -229,10 +238,10 @@ private fun JsonObject.toGrDetailHeaderEdit(): GrDetailHeaderEdit = GrDetailHead
     notes = string("notes").orEmpty(),
 )
 
-private fun JsonObject.detailReceivedByPicker(): PickerOption? {
+private fun JsonObject.detailReceivedByPicker(userFallback: (Long) -> String): PickerOption? {
     val userId = long("received_by") ?: return null
     val user = obj("received_by_user")
-    val label = user?.string("name") ?: "User #$userId"
+    val label = user?.string("name") ?: userFallback(userId)
     return PickerOption(userId, label, user?.string("email"))
 }
 
@@ -329,6 +338,7 @@ private suspend fun saveGoodsReceiptDetail(
     gr: JsonObject,
     lineEdits: List<GrDetailLineEdit>,
     header: GrDetailHeaderEdit,
+    savedMessageFallback: String,
 ): GrSaveResult {
     val body = buildGrUpdateRequest(gr, lineEdits, header)
     val res = container.workflowApi.executeOrQueue(
@@ -342,12 +352,13 @@ private suspend fun saveGoodsReceiptDetail(
     return GrSaveResult(
         saved = saved,
         putawayTaskId = container.resolvePutawayTaskId(grId, saved),
-        message = res.body()?.message ?: "Goods receipt saved",
+        message = res.body()?.message ?: savedMessageFallback,
     )
 }
 
 private fun applyGrSaveToUi(
     result: GrSaveResult,
+    userFallback: (Long) -> String,
     setDetail: (JsonObject) -> Unit,
     setPutawayTaskId: (Long?) -> Unit,
     setHeaderDate: (String) -> Unit,
@@ -366,7 +377,7 @@ private fun applyGrSaveToUi(
     setHeaderVehicle(h.vehicleNumber)
     setHeaderDriver(h.driverName)
     setHeaderNotes(h.notes)
-    setHeaderReceivedBy(result.saved.detailReceivedByPicker())
+    setHeaderReceivedBy(result.saved.detailReceivedByPicker(userFallback))
     reloadLineEdits()
 }
 
@@ -386,26 +397,29 @@ private data class GrSourceLinesResult(
 private suspend fun AppContainer.fetchGoodsReceiptSourceLines(
     sourceType: String,
     sourceId: Long,
+    productFallback: String,
+    emptyResponseError: String,
+    failedLoadLinesError: String,
 ): GrSourceLinesResult {
     val root = when (sourceType) {
         "stock_transfer" -> {
             val res = api.getStockTransferItemsForGr(sourceId)
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-            res.body()?.asJsonObject ?: error("Empty response")
+            res.body()?.asJsonObject ?: error(emptyResponseError)
         }
         "sales_return" -> {
             val res = api.getSalesReturnItemsForGr(sourceId)
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-            res.body()?.asJsonObject ?: error("Empty response")
+            res.body()?.asJsonObject ?: error(emptyResponseError)
         }
         else -> {
             val res = api.getPurchaseOrderItemsForGr(sourceId)
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-            res.body()?.asJsonObject ?: error("Empty response")
+            res.body()?.asJsonObject ?: error(emptyResponseError)
         }
     }
     if (root.get("success")?.asBoolean == false) {
-        error(root.get("message")?.asString ?: "Failed to load lines")
+        error(root.get("message")?.asString ?: failedLoadLinesError)
     }
     val header = when (sourceType) {
         "stock_transfer" -> root.getAsJsonObject("stockTransfer")
@@ -414,7 +428,7 @@ private suspend fun AppContainer.fetchGoodsReceiptSourceLines(
     }
     val lines = root.getAsJsonArray("items")
         ?.mapNotNull { it.takeIf { el -> el.isJsonObject }?.asJsonObject }
-        ?.let { parseGrSourceLines(it) }
+        ?.let { parseGrSourceLines(it, productFallback) }
         ?: emptyList()
     return GrSourceLinesResult(header, lines)
 }
@@ -440,6 +454,39 @@ fun ReceiveScreen(
     val tags by container.rfidManager.scannedTags.collectAsState()
     val scope = rememberCoroutineScope()
     val scanColors = rememberScanMatchColors()
+
+    val grTitleList = stringResource(R.string.gr_title_list)
+    val grTitleCreate = stringResource(R.string.gr_title_create)
+    val emDash = stringResource(R.string.display_empty)
+    val fallbackProduct = stringResource(R.string.gr_fallback_product_name)
+    val fallbackWarehouse = stringResource(R.string.gr_fallback_warehouse_name)
+    val fallbackMe = stringResource(R.string.gr_fallback_current_user)
+    val context = LocalContext.current
+    val userFallback: (Long) -> String = { id -> context.getString(R.string.gr_fallback_user_name, id) }
+    val errEmptyResponse = stringResource(R.string.error_empty_response)
+    val errFailedLoadLines = stringResource(R.string.gr_error_failed_load_lines)
+    val errNoRemainingLines = stringResource(R.string.gr_error_no_remaining_lines)
+    val errLoadReceipt = stringResource(R.string.gr_error_load_receipt)
+    val errEmptyGr = stringResource(R.string.gr_error_receipt_not_loaded)
+    val errChooseSource = stringResource(R.string.gr_error_choose_source)
+    val errChooseWarehouse = stringResource(R.string.gr_error_choose_warehouse)
+    val errChooseReceiver = stringResource(R.string.gr_error_choose_receiver)
+    val errCreatedEmpty = stringResource(R.string.gr_error_created_empty)
+    val errCreatedNoId = stringResource(R.string.gr_error_created_no_id)
+    val errScanTagsFirst = stringResource(R.string.common_error_scan_tags_first)
+    val msgGrSaved = stringResource(R.string.gr_success_saved)
+    val msgMatched = stringResource(R.string.gr_success_matched)
+    val labelAccepted = stringResource(R.string.gr_label_accepted)
+    val labelAcceptedLength = stringResource(R.string.gr_label_accepted_length)
+    val labelRejected = stringResource(R.string.gr_label_rejected)
+    val labelRejectedLength = stringResource(R.string.gr_label_rejected_length)
+    val colProduct = stringResource(R.string.common_col_product)
+    val colVar = stringResource(R.string.common_col_variation)
+    val colRoll = stringResource(R.string.common_col_roll)
+    val colStatus = stringResource(R.string.common_col_status)
+    val colGrNumber = stringResource(R.string.gr_col_gr_number)
+    val colWarehouse = stringResource(R.string.gr_col_warehouse)
+    val colDate = stringResource(R.string.gr_col_date)
 
     var detail by remember { mutableStateOf<JsonObject?>(null) }
     var detailLoading by remember { mutableStateOf(false) }
@@ -493,24 +540,22 @@ fun ReceiveScreen(
         WorkflowJson.envelopePage(res, page)
     }
     val listSortSearch = rememberTableSortSearch()
-    val grIndexColumns = remember {
-        listOf(
-            IndexColumnSpec("GR #", 1.25f, { it.string("goods_receipt_number") ?: "" }) {
-                TableCell.Text(it.string("goods_receipt_number") ?: "—", bold = true, mono = true)
-            },
-            IndexColumnSpec("Status", 0.75f, {
-                it.string("receipt_status") ?: it.string("status") ?: ""
-            }) {
-                TableCell.Status(it.string("receipt_status") ?: it.string("status"))
-            },
-            IndexColumnSpec("Warehouse", 1.05f, { it.obj("warehouse")?.string("name") ?: "" }) {
-                TableCell.Text(it.obj("warehouse")?.string("name") ?: "—")
-            },
-            IndexColumnSpec("Date", 0.8f, { it.string("receipt_date") ?: "" }) {
-                TableCell.Date(it.string("receipt_date"))
-            },
-        )
-    }
+    val grIndexColumns = listOf(
+        IndexColumnSpec(colGrNumber, 1.25f, { it.string("goods_receipt_number") ?: "" }) {
+            TableCell.Text(it.string("goods_receipt_number") ?: emDash, bold = true, mono = true)
+        },
+        IndexColumnSpec(colStatus, 0.75f, {
+            it.string("receipt_status") ?: it.string("status") ?: ""
+        }) {
+            TableCell.Status(it.string("receipt_status") ?: it.string("status"))
+        },
+        IndexColumnSpec(colWarehouse, 1.05f, { it.obj("warehouse")?.string("name") ?: "" }) {
+            TableCell.Text(it.obj("warehouse")?.string("name") ?: emDash)
+        },
+        IndexColumnSpec(colDate, 0.8f, { it.string("receipt_date") ?: "" }) {
+            TableCell.Date(it.string("receipt_date"))
+        },
+    )
 
     LaunchedEffect(workspaceScopeKey, step) {
         if (step is GrStep.Create) {
@@ -527,7 +572,7 @@ fun ReceiveScreen(
                 if (res.isSuccessful) {
                     val user = res.body()?.data
                     user?.id?.let { id ->
-                        selectedReceivedBy = PickerOption(id, user.name ?: "Me", user.email)
+                        selectedReceivedBy = PickerOption(id, user.name ?: fallbackMe, user.email)
                     }
                 }
             }
@@ -544,7 +589,7 @@ fun ReceiveScreen(
         detailHeaderVehicle = header.vehicleNumber
         detailHeaderDriver = header.driverName
         detailHeaderNotes = header.notes
-        detailHeaderReceivedBy = gr.detailReceivedByPicker()
+        detailHeaderReceivedBy = gr.detailReceivedByPicker(userFallback)
         createdPutawayTaskId = container.resolvePutawayTaskId(id, gr)
     }
 
@@ -571,11 +616,11 @@ fun ReceiveScreen(
                     detailLoading = false
                     return@LaunchedEffect
                 }
-                val gr = WorkflowJson.envelopeObject(res) ?: error("Empty goods receipt")
+                val gr = WorkflowJson.envelopeObject(res) ?: error(errEmptyGr)
                 applyGrDetail(gr, id)
             }.onFailure { e ->
                 if (!e.isBenignCancellation()) {
-                    message = e.message?.takeIf { it.isNotBlank() } ?: "Could not load receipt"
+                    message = e.message?.takeIf { it.isNotBlank() } ?: errLoadReceipt
                 }
                 detailLoading = false
             }
@@ -635,12 +680,18 @@ fun ReceiveScreen(
         }
         linesLoading = true
         try {
-            val result = container.fetchGoodsReceiptSourceLines(sourceType, sourceId)
+            val result = container.fetchGoodsReceiptSourceLines(
+                sourceType,
+                sourceId,
+                productFallback = fallbackProduct,
+                emptyResponseError = errEmptyResponse,
+                failedLoadLinesError = errFailedLoadLines,
+            )
             sourceHeader = result.header
             lineDrafts.clear()
             lineDrafts.addAll(result.lines)
             if (result.lines.isEmpty()) {
-                message = "No remaining lines on this source"
+                message = errNoRemainingLines
             } else {
                 createTab = 1
                 message = null
@@ -753,17 +804,17 @@ fun ReceiveScreen(
     }
 
     val title = when (step) {
-        GrStep.List -> "Goods receipt"
-        GrStep.Create -> "New goods receipt"
-        is GrStep.Detail -> detail?.string("goods_receipt_number") ?: "Goods receipt"
+        GrStep.List -> grTitleList
+        GrStep.Create -> grTitleCreate
+        is GrStep.Detail -> detail?.string("goods_receipt_number") ?: grTitleList
     }
 
     ErpScaffold(
         title = title,
         subtitle = when (step) {
-            GrStep.List -> "Tap a row to open · auto-syncs"
-            GrStep.Create -> "Receipt info → items to receive"
-            is GrStep.Detail -> DisplayFormat.status(detail?.string("receipt_status") ?: detail?.string("status"))
+            GrStep.List -> stringResource(R.string.gr_subtitle_list)
+            GrStep.Create -> stringResource(R.string.gr_subtitle_create)
+            is GrStep.Detail -> UiStrings.apiStatus(detail?.string("receipt_status") ?: detail?.string("status"))
         },
         onBack = {
             when (step) {
@@ -775,7 +826,7 @@ fun ReceiveScreen(
     ) {
         message?.let {
             if (!it.isBenignCancellationMessage()) {
-                StatusBanner(it, isError = it.contains("Error", true) || it.startsWith("Failed"))
+                StatusBanner(it, isError = StatusMessage.looksLikeError(it))
             }
         }
 
@@ -785,7 +836,7 @@ fun ReceiveScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     LiveSyncIndicator(liveList.lastUpdatedMs)
                     ErpPrimaryButton(
-                        text = "New receipt",
+                        text = stringResource(R.string.gr_btn_new_receipt),
                         onClick = {
                             message = null
                             step = GrStep.Create
@@ -795,7 +846,7 @@ fun ReceiveScreen(
                             sourceType = "purchase_order"
                             selectedSource = null
                             selectedWarehouse = workspaceWarehouseId?.toLongOrNull()?.let { id ->
-                                PickerOption(id, workspaceWarehouseName ?: "Warehouse", null)
+                                PickerOption(id, workspaceWarehouseName ?: fallbackWarehouse, null)
                             }
                             selectedReceivedBy = null
                             receiptDate = LocalDate.now().toString()
@@ -812,8 +863,8 @@ fun ReceiveScreen(
                     rows = liveList.rows,
                     columns = grIndexColumns,
                     sortSearch = listSortSearch,
-                    emptyText = "No goods receipts found.",
-                    searchPlaceholder = "Search receipts…",
+                    emptyText = stringResource(R.string.gr_empty_list),
+                    searchPlaceholder = stringResource(R.string.gr_search_placeholder),
                     loading = liveList.loading,
                     loadingMore = liveList.loadingMore,
                     hasMore = liveList.hasMore,
@@ -828,15 +879,16 @@ fun ReceiveScreen(
 
             GrStep.Create -> {
                 TabRow(createTab) {
-                    Tab(selected = createTab == 0, onClick = { createTab = 0 }, text = { Text("Receipt info") })
+                    Tab(selected = createTab == 0, onClick = { createTab = 0 }, text = { Text(stringResource(R.string.gr_tab_receipt_info)) })
                     Tab(
                         selected = createTab == 1,
                         onClick = { if (!linesLoading) createTab = 1 },
                         text = {
                             Text(
-                                when {
-                                    linesLoading -> "Items (…)"
-                                    else -> "Items (${lineDrafts.size})"
+                                if (linesLoading) {
+                                    stringResource(R.string.action_loading)
+                                } else {
+                                    stringResource(R.string.gr_tab_items_count, lineDrafts.size)
                                 },
                             )
                         },
@@ -866,14 +918,14 @@ fun ReceiveScreen(
                         ErpCard {
                             GrSectionHeader(
                                 icon = Icons.Default.Store,
-                                title = "Receipt details",
-                                subtitle = "Warehouse, date & delivery info",
+                                title = stringResource(R.string.gr_section_receipt_details),
+                                subtitle = stringResource(R.string.gr_section_receipt_details_subtitle_create),
                             )
                             Spacer(Modifier.height(12.dp))
                             SearchablePickerField(
-                                label = "Warehouse",
+                                label = stringResource(R.string.gr_col_warehouse),
                                 selected = selectedWarehouse,
-                                placeholder = "Choose warehouse",
+                                placeholder = stringResource(R.string.gr_placeholder_warehouse),
                                 onOpen = { whPickerOpen = true },
                                 onClear = { selectedWarehouse = null },
                             )
@@ -881,35 +933,35 @@ fun ReceiveScreen(
                             OutlinedTextField(
                                 receiptDate,
                                 { receiptDate = it },
-                                label = { Text("Receipt date") },
+                                label = { Text(stringResource(R.string.gr_label_receipt_date)) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(8.dp))
                             OutlinedTextField(
                                 deliveryNote,
                                 { deliveryNote = it },
-                                label = { Text("Delivery note #") },
+                                label = { Text(stringResource(R.string.gr_label_delivery_note)) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(8.dp))
                             OutlinedTextField(
                                 vehicleNumber,
                                 { vehicleNumber = it },
-                                label = { Text("Vehicle number") },
+                                label = { Text(stringResource(R.string.gr_label_vehicle_number)) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(8.dp))
                             OutlinedTextField(
                                 driverName,
                                 { driverName = it },
-                                label = { Text("Driver name") },
+                                label = { Text(stringResource(R.string.gr_label_driver_name)) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(8.dp))
                             SearchablePickerField(
-                                label = "Received by",
+                                label = stringResource(R.string.gr_label_received_by),
                                 selected = selectedReceivedBy,
-                                placeholder = "Choose receiver",
+                                placeholder = stringResource(R.string.gr_placeholder_receiver),
                                 onOpen = { userPickerOpen = true },
                                 onClear = { selectedReceivedBy = null },
                             )
@@ -917,7 +969,7 @@ fun ReceiveScreen(
                             OutlinedTextField(
                                 receiptNotes,
                                 { receiptNotes = it },
-                                label = { Text("Receipt notes") },
+                                label = { Text(stringResource(R.string.gr_label_receipt_notes)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 minLines = 2,
                             )
@@ -933,20 +985,20 @@ fun ReceiveScreen(
                                 label = buildString {
                                     append(line.productName)
                                     if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
-                                    line.rollNumber?.let { append(" · roll ").append(it) }
+                                    line.rollNumber?.let { append(stringResource(R.string.gr_line_roll_suffix, it)) }
                                 },
                             )
                         }
                         WorkflowDataTable(
                             columns = listOf(
-                                DataTableColumn("Product", 0.9f),
-                                DataTableColumn("Var", 0.45f),
-                                DataTableColumn("Roll", 0.35f),
-                                DataTableColumn("Ord", 0.28f),
-                                DataTableColumn("Prev", 0.28f),
-                                DataTableColumn("Rem", 0.28f),
-                                DataTableColumn("Acc", 0.28f),
-                                DataTableColumn("Rej", 0.28f),
+                                DataTableColumn(colProduct, 0.9f),
+                                DataTableColumn(colVar, 0.45f),
+                                DataTableColumn(colRoll, 0.35f),
+                                DataTableColumn(stringResource(R.string.gr_col_ordered), 0.28f),
+                                DataTableColumn(stringResource(R.string.gr_col_previously_received), 0.28f),
+                                DataTableColumn(stringResource(R.string.gr_col_remaining), 0.28f),
+                                DataTableColumn(stringResource(R.string.gr_col_accepted), 0.28f),
+                                DataTableColumn(stringResource(R.string.gr_col_rejected), 0.28f),
                             ),
                             rowBackground = { index ->
                                 lineHighlights[createMatchLines.getOrNull(index)?.key]
@@ -956,8 +1008,8 @@ fun ReceiveScreen(
                             rows = lineDrafts.map { line ->
                                 listOf(
                                     TableCell.Text(line.productName),
-                                    TableCell.Text(line.variationLabel.ifBlank { "—" }),
-                                    TableCell.Text(line.rollNumber ?: if (line.isRollProduct) "—" else ""),
+                                    TableCell.Text(line.variationLabel.ifBlank { emDash }),
+                                    TableCell.Text(line.rollNumber ?: if (line.isRollProduct) emDash else ""),
                                     TableCell.Text(
                                         formatQtyWithUnit(
                                             DisplayFormat.qty(line.orderedQty),
@@ -980,37 +1032,45 @@ fun ReceiveScreen(
                                         ),
                                     ),
                                     TableCell.Text(
-                                        if (line.acceptedQty.isBlank()) "—"
+                                        if (line.acceptedQty.isBlank()) emDash
                                         else formatQtyWithUnit(line.acceptedQty, line.quantityUnitSuffix, line.isRollProduct),
                                     ),
                                     TableCell.Text(
-                                        if (line.rejectedQty.isBlank() || line.rejectedQty == "0") "—"
+                                        if (line.rejectedQty.isBlank() || line.rejectedQty == "0") emDash
                                         else formatQtyWithUnit(line.rejectedQty, line.quantityUnitSuffix, line.isRollProduct),
                                     ),
                                 )
                             },
-                            emptyText = if (linesLoading) "Loading lines…" else "Choose a source on Receipt info to load lines.",
+                            emptyText = if (linesLoading) {
+                                stringResource(R.string.gr_empty_lines_loading)
+                            } else {
+                                stringResource(R.string.gr_empty_lines_no_source)
+                            },
                             loading = linesLoading,
                         )
                         lineDrafts.forEachIndexed { index, line ->
                             val accLabel = if (line.isRollProduct) {
-                                WorkflowJson.rollLengthLabel(line.quantityUnitSuffix, "Accepted length")
+                                WorkflowJson.rollLengthLabel(line.quantityUnitSuffix, labelAcceptedLength)
                             } else {
-                                "Accepted"
+                                labelAccepted
                             }
                             val rejLabel = if (line.isRollProduct) {
-                                WorkflowJson.rollLengthLabel(line.quantityUnitSuffix, "Rejected length")
+                                WorkflowJson.rollLengthLabel(line.quantityUnitSuffix, labelRejectedLength)
                             } else {
-                                "Rejected"
+                                labelRejected
                             }
                             Text(
                                 buildString {
                                     append(line.productName)
                                     if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
-                                    line.rollNumber?.let { append(" · roll ").append(it) }
+                                    line.rollNumber?.let { append(stringResource(R.string.gr_line_roll_suffix, it)) }
                                     line.rollLengthHint?.let { hint ->
-                                        append(" · hint ")
-                                        append(formatQtyWithUnit(DisplayFormat.qty(hint), line.quantityUnitSuffix, true))
+                                        append(
+                                            stringResource(
+                                                R.string.gr_line_hint_suffix,
+                                                formatQtyWithUnit(DisplayFormat.qty(hint), line.quantityUnitSuffix, true),
+                                            ),
+                                        )
                                     }
                                 },
                                 style = MaterialTheme.typography.labelMedium,
@@ -1052,7 +1112,7 @@ fun ReceiveScreen(
                             onClear = { container.rfidManager.clearScannedTags() },
                         )
                         ErpPrimaryButton(
-                            text = "Save goods receipt",
+                            text = stringResource(R.string.gr_btn_save_receipt),
                             loading = actionLoading,
                             onClick = {
                                 scope.launchWorkflow(
@@ -1060,9 +1120,9 @@ fun ReceiveScreen(
                                     onError = { message = it },
                                     onSuccess = { message = it },
                                 ) {
-                                    val sourceId = selectedSource?.id ?: error("Choose a source document")
-                                    val whId = selectedWarehouse?.id ?: error("Choose a warehouse")
-                                    val userId = selectedReceivedBy?.id ?: error("Choose who received this")
+                                    val sourceId = selectedSource?.id ?: error(errChooseSource)
+                                    val whId = selectedWarehouse?.id ?: error(errChooseWarehouse)
+                                    val userId = selectedReceivedBy?.id ?: error(errChooseReceiver)
                                     val items = lineDrafts.map { line ->
                                         val acc = line.acceptedQty.toDoubleOrNull() ?: 0.0
                                         val rej = line.rejectedQty.toDoubleOrNull() ?: 0.0
@@ -1073,9 +1133,9 @@ fun ReceiveScreen(
                                             }
                                             error(
                                                 if (line.isRollProduct) {
-                                                    "Enter measured length for $label"
+                                                    context.getString(R.string.gr_error_enter_roll_length, label)
                                                 } else {
-                                                    "Enter accepted or rejected qty for $label"
+                                                    context.getString(R.string.gr_error_enter_qty, label)
                                                 },
                                             )
                                         }
@@ -1121,8 +1181,8 @@ fun ReceiveScreen(
                                     val res = container.api.createGoodsReceipt(body)
                                     if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                                     val created = WorkflowJson.envelopeObject(res)
-                                        ?: error("Created but empty response")
-                                    val newId = created.long("id") ?: error("Created but no ID returned")
+                                        ?: error(errCreatedEmpty)
+                                    val newId = created.long("id") ?: error(errCreatedNoId)
                                     val loaded = WorkflowJson.envelopeObject(container.api.getGoodsReceipt(newId)) ?: created
                                     applyGrDetail(loaded, newId)
                                     step = GrStep.Detail(newId)
@@ -1132,8 +1192,10 @@ fun ReceiveScreen(
                                         tasks?.firstOrNull()?.asJsonObject?.string("putaway_task_number")
                                             ?: "#$taskId"
                                     }
-                                    val putawayNote = putawayNum?.let { " · Putaway $it created" } ?: ""
-                                    "Goods receipt saved$putawayNote"
+                                    val putawayNote = putawayNum?.let {
+                                        context.getString(R.string.gr_success_saved_with_putaway, it)
+                                    } ?: msgGrSaved
+                                    putawayNote
                                 }
                             },
                         )
@@ -1157,33 +1219,38 @@ fun ReceiveScreen(
                 ) {
                     gr?.let {
                         Text(
-                            "Source: ${DisplayFormat.status(it.string("source_type"))} #${it.long("source_id")} · " +
-                                DisplayFormat.status(it.string("receipt_status") ?: it.string("status") ?: ""),
+                            stringResource(
+                                R.string.gr_detail_source_summary,
+                                UiStrings.grSourceType(it.string("source_type")),
+                                it.long("source_id") ?: 0L,
+                                UiStrings.apiStatus(it.string("receipt_status") ?: it.string("status") ?: ""),
+                            ),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     if (putawayTaskId != null) {
                         val putawayLabel = gr?.array("putaway_tasks")?.firstOrNull()?.asJsonObject
-                            ?.string("putaway_task_number") ?: "Putaway #$putawayTaskId"
+                            ?.string("putaway_task_number")
+                            ?: stringResource(R.string.gr_putaway_fallback_label, putawayTaskId)
                         ErpPrimaryButton(
-                            text = "Open $putawayLabel",
+                            text = stringResource(R.string.gr_btn_open_putaway, putawayLabel),
                             onClick = { onOpenPutaway(putawayTaskId) },
                         )
                     } else {
                         Text(
-                            "No putaway task yet — only approved accepted qty creates putaway.",
+                            stringResource(R.string.gr_no_putaway_hint),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     if (canEditLines) {
                         TabRow(detailEditTab) {
-                            Tab(selected = detailEditTab == 0, onClick = { detailEditTab = 0 }, text = { Text("Receipt info") })
+                            Tab(selected = detailEditTab == 0, onClick = { detailEditTab = 0 }, text = { Text(stringResource(R.string.gr_tab_receipt_info)) })
                             Tab(
                                 selected = detailEditTab == 1,
                                 onClick = { detailEditTab = 1 },
-                                text = { Text("Items (${detailLineEdits.size})") },
+                                text = { Text(stringResource(R.string.gr_tab_items_count, detailLineEdits.size)) },
                             )
                         }
                     }
@@ -1191,12 +1258,15 @@ fun ReceiveScreen(
                         ErpCard {
                             GrSectionHeader(
                                 icon = Icons.Default.Store,
-                                title = "Receipt details",
-                                subtitle = "Edit delivery info before putaway completes",
+                                title = stringResource(R.string.gr_section_receipt_details),
+                                subtitle = stringResource(R.string.gr_section_receipt_details_subtitle_edit),
                             )
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                "Warehouse: ${gr?.obj("warehouse")?.string("name") ?: "—"}",
+                                stringResource(
+                                    R.string.gr_readonly_warehouse,
+                                    gr?.obj("warehouse")?.string("name") ?: emDash,
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -1204,35 +1274,35 @@ fun ReceiveScreen(
                             OutlinedTextField(
                                 detailHeaderDate,
                                 { detailHeaderDate = it },
-                                label = { Text("Receipt date") },
+                                label = { Text(stringResource(R.string.gr_label_receipt_date)) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(8.dp))
                             OutlinedTextField(
                                 detailHeaderDeliveryNote,
                                 { detailHeaderDeliveryNote = it },
-                                label = { Text("Delivery note #") },
+                                label = { Text(stringResource(R.string.gr_label_delivery_note)) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(8.dp))
                             OutlinedTextField(
                                 detailHeaderVehicle,
                                 { detailHeaderVehicle = it },
-                                label = { Text("Vehicle number") },
+                                label = { Text(stringResource(R.string.gr_label_vehicle_number)) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(8.dp))
                             OutlinedTextField(
                                 detailHeaderDriver,
                                 { detailHeaderDriver = it },
-                                label = { Text("Driver name") },
+                                label = { Text(stringResource(R.string.gr_label_driver_name)) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(8.dp))
                             SearchablePickerField(
-                                label = "Received by",
+                                label = stringResource(R.string.gr_label_received_by),
                                 selected = detailHeaderReceivedBy,
-                                placeholder = "Choose receiver",
+                                placeholder = stringResource(R.string.gr_placeholder_receiver),
                                 onOpen = { userPickerOpen = true },
                                 onClear = { detailHeaderReceivedBy = null },
                             )
@@ -1240,13 +1310,13 @@ fun ReceiveScreen(
                             OutlinedTextField(
                                 detailHeaderNotes,
                                 { detailHeaderNotes = it },
-                                label = { Text("Receipt notes") },
+                                label = { Text(stringResource(R.string.gr_label_receipt_notes)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 minLines = 2,
                             )
                         }
                         ErpPrimaryButton(
-                            text = "Save changes",
+                            text = stringResource(R.string.action_save_changes),
                             loading = actionLoading,
                             onClick = {
                                 scope.launchWorkflow(
@@ -1257,7 +1327,7 @@ fun ReceiveScreen(
                                     val result = saveGoodsReceiptDetail(
                                         container = container,
                                         grId = grId,
-                                        gr = detail ?: error("Receipt not loaded"),
+                                        gr = detail ?: error(errEmptyGr),
                                         lineEdits = detailLineEdits.toList(),
                                         header = GrDetailHeaderEdit(
                                             receiptDate = detailHeaderDate,
@@ -1265,12 +1335,14 @@ fun ReceiveScreen(
                                             vehicleNumber = detailHeaderVehicle,
                                             driverName = detailHeaderDriver,
                                             receivedById = detailHeaderReceivedBy?.id
-                                                ?: error("Choose who received this"),
+                                                ?: error(errChooseReceiver),
                                             notes = detailHeaderNotes,
                                         ),
+                                        savedMessageFallback = msgGrSaved,
                                     )
                                     applyGrSaveToUi(
                                         result,
+                                        userFallback = userFallback,
                                         setDetail = { detail = it },
                                         setPutawayTaskId = { createdPutawayTaskId = it },
                                         setHeaderDate = { detailHeaderDate = it },
@@ -1292,33 +1364,50 @@ fun ReceiveScreen(
                     } else if (!canEditLines) {
                         gr?.let {
                             Text(
-                                buildString {
-                                    append("Date: ${it.string("receipt_date") ?: "—"}")
-                                    append(" · WH: ${it.obj("warehouse")?.string("name") ?: "—"}")
-                                },
+                                stringResource(
+                                    R.string.gr_readonly_date_warehouse,
+                                    it.string("receipt_date") ?: emDash,
+                                    it.obj("warehouse")?.string("name") ?: emDash,
+                                ),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             it.string("delivery_note_number")?.takeIf { n -> n.isNotBlank() }?.let { note ->
-                                Text("Delivery note: $note", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    stringResource(R.string.gr_readonly_delivery_note, note),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                             val vehicle = it.string("vehicle_number")
                             val driver = it.string("driver_name")
                             if (!vehicle.isNullOrBlank() || !driver.isNullOrBlank()) {
                                 Text(
                                     listOfNotNull(
-                                        vehicle?.takeIf { v -> v.isNotBlank() }?.let { v -> "Vehicle: $v" },
-                                        driver?.takeIf { d -> d.isNotBlank() }?.let { d -> "Driver: $d" },
+                                        vehicle?.takeIf { v -> v.isNotBlank() }?.let { v ->
+                                            stringResource(R.string.gr_readonly_vehicle, v)
+                                        },
+                                        driver?.takeIf { d -> d.isNotBlank() }?.let { d ->
+                                            stringResource(R.string.gr_readonly_driver, d)
+                                        },
                                     ).joinToString(" · "),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                             val receiver = it.obj("received_by_user")?.string("name")
-                                ?: it.long("received_by")?.let { id -> "User #$id" }
-                            Text("Received by: $receiver", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                ?: it.long("received_by")?.let { id -> userFallback(id) }
+                            Text(
+                                stringResource(R.string.gr_readonly_received_by, receiver ?: emDash),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                             it.string("notes")?.takeIf { n -> n.isNotBlank() }?.let { note ->
-                                Text("Notes: $note", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    stringResource(R.string.gr_readonly_notes, note),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     }
@@ -1339,12 +1428,12 @@ fun ReceiveScreen(
                     }
                     WorkflowDataTable(
                         columns = listOf(
-                            DataTableColumn("Product", 0.9f),
-                            DataTableColumn("Var", 0.5f),
-                            DataTableColumn("Roll", 0.4f),
-                            DataTableColumn("Ord", 0.32f),
-                            DataTableColumn("Acc", 0.32f),
-                            DataTableColumn("Rej", 0.32f),
+                            DataTableColumn(colProduct, 0.9f),
+                            DataTableColumn(colVar, 0.5f),
+                            DataTableColumn(colRoll, 0.4f),
+                            DataTableColumn(stringResource(R.string.gr_col_ordered), 0.32f),
+                            DataTableColumn(stringResource(R.string.gr_col_accepted), 0.32f),
+                            DataTableColumn(stringResource(R.string.gr_col_rejected), 0.32f),
                         ),
                         rowBackground = { index ->
                             detailMatchLines.getOrNull(index)?.key?.let { detailLineHighlights[it] }
@@ -1354,8 +1443,8 @@ fun ReceiveScreen(
                         rows = detailLineEdits.map { line ->
                             listOf(
                                 TableCell.Text(line.productName),
-                                TableCell.Text(line.variationLabel.ifBlank { "—" }),
-                                TableCell.Text(line.rollNumber ?: if (line.isRollProduct) "—" else ""),
+                                TableCell.Text(line.variationLabel.ifBlank { emDash }),
+                                TableCell.Text(line.rollNumber ?: if (line.isRollProduct) emDash else ""),
                                 TableCell.Text(
                                     formatQtyWithUnit(
                                         DisplayFormat.qty(line.orderedQty),
@@ -1364,35 +1453,35 @@ fun ReceiveScreen(
                                     ),
                                 ),
                                 TableCell.Text(
-                                    if (line.acceptedQty.isBlank()) "—"
+                                    if (line.acceptedQty.isBlank()) emDash
                                     else formatQtyWithUnit(line.acceptedQty, line.quantityUnitSuffix, line.isRollProduct),
                                 ),
                                 TableCell.Text(
-                                    if (line.rejectedQty.isBlank() || line.rejectedQty == "0") "—"
+                                    if (line.rejectedQty.isBlank() || line.rejectedQty == "0") emDash
                                     else formatQtyWithUnit(line.rejectedQty, line.quantityUnitSuffix, line.isRollProduct),
                                 ),
                             )
                         },
-                        emptyText = "No line items.",
+                        emptyText = stringResource(R.string.gr_empty_lines_detail),
                         modifier = Modifier.weight(1f),
                     )
                     if (canEditLines) {
                         detailLineEdits.forEachIndexed { index, line ->
                             val accLabel = if (line.isRollProduct) {
-                                rollLengthLabel(line.quantityUnitSuffix, "Accepted length")
+                                rollLengthLabel(line.quantityUnitSuffix, labelAcceptedLength)
                             } else {
-                                "Accepted"
+                                labelAccepted
                             }
                             val rejLabel = if (line.isRollProduct) {
-                                rollLengthLabel(line.quantityUnitSuffix, "Rejected length")
+                                rollLengthLabel(line.quantityUnitSuffix, labelRejectedLength)
                             } else {
-                                "Rejected"
+                                labelRejected
                             }
                             Text(
                                 buildString {
                                     append(line.productName)
                                     if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
-                                    line.rollNumber?.let { append(" · roll ").append(it) }
+                                    line.rollNumber?.let { append(stringResource(R.string.gr_line_roll_suffix, it)) }
                                 },
                                 style = MaterialTheme.typography.labelMedium,
                             )
@@ -1413,7 +1502,7 @@ fun ReceiveScreen(
                         }
                     } else {
                         Text(
-                            "Receipt is locked — quantities cannot be edited.",
+                            stringResource(R.string.gr_locked_message),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1446,7 +1535,7 @@ fun ReceiveScreen(
                     )
                     if (canEditLines) {
                         ErpPrimaryButton(
-                            text = "Save changes",
+                            text = stringResource(R.string.action_save_changes),
                             loading = actionLoading,
                             onClick = {
                                 scope.launchWorkflow(
@@ -1457,7 +1546,7 @@ fun ReceiveScreen(
                                     val result = saveGoodsReceiptDetail(
                                         container = container,
                                         grId = grId,
-                                        gr = detail ?: error("Receipt not loaded"),
+                                        gr = detail ?: error(errEmptyGr),
                                         lineEdits = detailLineEdits.toList(),
                                         header = GrDetailHeaderEdit(
                                             receiptDate = detailHeaderDate,
@@ -1465,12 +1554,14 @@ fun ReceiveScreen(
                                             vehicleNumber = detailHeaderVehicle,
                                             driverName = detailHeaderDriver,
                                             receivedById = detailHeaderReceivedBy?.id
-                                                ?: error("Choose who received this"),
+                                                ?: error(errChooseReceiver),
                                             notes = detailHeaderNotes,
                                         ),
+                                        savedMessageFallback = msgGrSaved,
                                     )
                                     applyGrSaveToUi(
                                         result,
+                                        userFallback = userFallback,
                                         setDetail = { detail = it },
                                         setPutawayTaskId = { createdPutawayTaskId = it },
                                         setHeaderDate = { detailHeaderDate = it },
@@ -1490,13 +1581,13 @@ fun ReceiveScreen(
                             },
                         )
                     }
-                    ErpPrimaryButton(text = "Sync scans to server", onClick = {
+                    ErpPrimaryButton(text = stringResource(R.string.gr_btn_sync_scans), onClick = {
                         scope.launchWorkflow(
                             onError = { message = it },
                             onSuccess = { message = it },
                         ) {
                             val epcs = tags.map { it.epc }
-                            if (epcs.isEmpty()) error("Scan tags first")
+                            if (epcs.isEmpty()) error(errScanTagsFirst)
                             val res = container.api.goodsReceiptRfidScan(
                                 grId,
                                 WorkflowScanRequest(epcs, UUID.randomUUID().toString()),
@@ -1504,7 +1595,7 @@ fun ReceiveScreen(
                             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                             queueReads(container, "receiving", epcs)
                             detail = WorkflowJson.envelopeObject(container.api.getGoodsReceipt(grId))
-                            res.body()?.message ?: "Matched"
+                            res.body()?.message ?: msgMatched
                         }
                     })
                     }
@@ -1517,30 +1608,30 @@ fun ReceiveScreen(
     SearchablePickerSheet(
         visible = sourcePickerOpen,
         title = when (sourceType) {
-            "stock_transfer" -> "Stock transfer"
-            "sales_return" -> "Sales return"
-            else -> "Purchase order"
+            "stock_transfer" -> stringResource(R.string.gr_source_type_transfer_title)
+            "sales_return" -> stringResource(R.string.gr_source_type_return_title)
+            else -> stringResource(R.string.gr_source_type_po_title)
         },
         options = sourceOptions,
         loading = pickerLoading,
         onDismiss = { sourcePickerOpen = false },
         onSelect = { selectedSource = it },
         onSearch = { sourceSearchQuery = it },
-        searchHint = "Search source…",
+        searchHint = stringResource(R.string.gr_picker_search_source),
     )
     SearchablePickerSheet(
         visible = whPickerOpen,
-        title = "Warehouse",
+        title = stringResource(R.string.gr_col_warehouse),
         options = whOptions,
         loading = pickerLoading,
         onDismiss = { whPickerOpen = false },
         onSelect = { selectedWarehouse = it },
         onSearch = { whSearchQuery = it },
-        searchHint = "Search warehouse…",
+        searchHint = stringResource(R.string.gr_picker_search_warehouse),
     )
     SearchablePickerSheet(
         visible = userPickerOpen,
-        title = "Received by",
+        title = stringResource(R.string.gr_label_received_by),
         options = userOptions,
         loading = pickerLoading,
         onDismiss = { userPickerOpen = false },
@@ -1552,39 +1643,39 @@ fun ReceiveScreen(
             }
         },
         onSearch = { userSearchQuery = it },
-        searchHint = "Search user…",
+        searchHint = stringResource(R.string.gr_picker_search_user),
     )
 }
 
 private data class GrSourceTypeChoice(
     val type: String,
-    val title: String,
-    val description: String,
+    @StringRes val titleRes: Int,
+    @StringRes val descriptionRes: Int,
     val icon: ImageVector,
-    val pickerPlaceholder: String,
+    @StringRes val pickerPlaceholderRes: Int,
 )
 
 private val GR_SOURCE_TYPES = listOf(
     GrSourceTypeChoice(
         type = "purchase_order",
-        title = "Purchase order",
-        description = "Receive stock from a supplier PO",
+        titleRes = R.string.gr_source_type_po_title,
+        descriptionRes = R.string.gr_source_type_po_description,
         icon = Icons.Default.ShoppingCart,
-        pickerPlaceholder = "Search open purchase orders",
+        pickerPlaceholderRes = R.string.gr_source_type_po_picker_placeholder,
     ),
     GrSourceTypeChoice(
         type = "stock_transfer",
-        title = "Stock transfer",
-        description = "Inbound from another warehouse",
+        titleRes = R.string.gr_source_type_transfer_title,
+        descriptionRes = R.string.gr_source_type_transfer_description,
         icon = Icons.Default.SwapHoriz,
-        pickerPlaceholder = "Search transfers ready to receive",
+        pickerPlaceholderRes = R.string.gr_source_type_transfer_picker_placeholder,
     ),
     GrSourceTypeChoice(
         type = "sales_return",
-        title = "Sales return",
-        description = "Customer return documents",
+        titleRes = R.string.gr_source_type_return_title,
+        descriptionRes = R.string.gr_source_type_return_description,
         icon = Icons.AutoMirrored.Filled.Reply,
-        pickerPlaceholder = "Search sales returns",
+        pickerPlaceholderRes = R.string.gr_source_type_return_picker_placeholder,
     ),
 )
 
@@ -1691,13 +1782,13 @@ private fun GrSourceTypeOption(
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                choice.title,
+                stringResource(choice.titleRes),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                choice.description,
+                stringResource(choice.descriptionRes),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1757,19 +1848,19 @@ private fun GrDocumentPickerCard(
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    selected?.title ?: choice.title,
+                    selected?.title ?: stringResource(choice.titleRes),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 val subtitle = when {
-                    linesLoading -> "Loading line items…"
+                    linesLoading -> stringResource(R.string.gr_source_loading_lines)
                     selected != null -> listOfNotNull(
                         selected.subtitle?.takeIf { it.isNotBlank() },
                         headerSummary?.takeIf { it.isNotBlank() && it != selected.subtitle },
-                    ).joinToString(" · ").ifBlank { choice.pickerPlaceholder }
-                    else -> choice.pickerPlaceholder
+                    ).joinToString(" · ").ifBlank { stringResource(choice.pickerPlaceholderRes) }
+                    else -> stringResource(choice.pickerPlaceholderRes)
                 }
                 Text(
                     subtitle,
@@ -1782,7 +1873,7 @@ private fun GrDocumentPickerCard(
             when {
                 linesLoading -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                 selected != null -> IconButton(onClick = onClear, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "Clear source")
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.gr_cd_clear_source))
                 }
                 else -> Icon(
                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -1797,7 +1888,7 @@ private fun GrDocumentPickerCard(
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
             ) {
                 Text(
-                    "$lineCount line${if (lineCount == 1) "" else "s"} ready — open Items tab to receive",
+                    pluralStringResource(R.plurals.gr_source_lines_ready, lineCount, lineCount),
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
@@ -1826,8 +1917,8 @@ private fun GrSourceSelectionSection(
     ErpCard {
         GrSectionHeader(
             icon = Icons.Default.Description,
-            title = "Receive from",
-            subtitle = "Choose source type and document",
+            title = stringResource(R.string.gr_section_receive_from),
+            subtitle = stringResource(R.string.gr_section_receive_from_subtitle),
         )
         Spacer(Modifier.height(14.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1843,7 +1934,7 @@ private fun GrSourceSelectionSection(
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
         Spacer(Modifier.height(14.dp))
         Text(
-            "Source document",
+            stringResource(R.string.gr_label_source_document),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
         )

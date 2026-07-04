@@ -17,8 +17,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.data.remote.EncodeConfirmRequest
 import com.erpcomplete.rfid.data.remote.EncodeRequest
@@ -33,6 +36,7 @@ import com.erpcomplete.rfid.ui.components.StatusBanner
 import com.erpcomplete.rfid.ui.components.WorkflowListTable
 import com.erpcomplete.rfid.ui.components.WorkflowScanSection
 import com.erpcomplete.rfid.util.ApiErrorParser
+import com.erpcomplete.rfid.util.StatusMessage
 import com.erpcomplete.rfid.util.PickerMappers
 import com.erpcomplete.rfid.util.WorkflowJson
 import com.erpcomplete.rfid.util.WorkflowJson.long
@@ -40,6 +44,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
+    val context = LocalContext.current
     var jobId by remember { mutableStateOf<Long?>(null) }
     var epcToWrite by remember { mutableStateOf("") }
     var sourceTagEpc by remember { mutableStateOf<String?>(null) }
@@ -120,7 +125,9 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
                         if (!name.isNullOrBlank() && !value.isNullOrBlank()) "$name: $value" else null
                     }?.joinToString(" · ")
                     val main = v.get("value")?.asString ?: v.get("display_label")?.asString
-                    val title = listOfNotNull(main, attrText).joinToString(" — ").ifBlank { "Variation #$id" }
+                    val title = listOfNotNull(main, attrText).joinToString(" — ").ifBlank {
+                        context.getString(R.string.variation_fallback_title, id)
+                    }
                     PickerOption(id, title, attrText)
                 } ?: emptyList()
                 if (variationOptions.isEmpty()) selectedVariation = null
@@ -130,19 +137,19 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
     }
 
     ErpScaffold(
-        title = "Encode tag",
-        subtitle = "Choose product → request EPC → write → verify → confirm",
+        title = stringResource(R.string.encode_title),
+        subtitle = stringResource(R.string.encode_subtitle),
         onBack = onBack,
     ) {
         message?.let {
-            StatusBanner(it, isError = it.contains("fail", true) || it.contains("error", true))
+            StatusBanner(it, isError = StatusMessage.looksLikeError(it))
         }
 
         if (!isConnected) {
-            StatusBanner("Connect the RFD90 reader before encoding.", isError = true)
+            StatusBanner(stringResource(R.string.encode_connect_required), isError = true)
         }
         if (warehouseId == null) {
-            StatusBanner("Select a workspace warehouse (Home or Settings) before encoding.", isError = true)
+            StatusBanner(stringResource(R.string.encode_warehouse_required), isError = true)
         }
 
         Column(
@@ -154,13 +161,13 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
             ErpCard {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "Product identity",
+                        stringResource(R.string.encode_product_identity),
                         style = MaterialTheme.typography.titleSmall,
                     )
                     SearchablePickerField(
-                        label = "Product",
+                        label = stringResource(R.string.label_product),
                         selected = selectedProduct,
-                        placeholder = "Choose product",
+                        placeholder = stringResource(R.string.placeholder_choose_product),
                         onOpen = {
                             productPickerOpen = true
                             loadProducts("")
@@ -179,11 +186,12 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
                     )
                     if (selectedProduct != null) {
                         SearchablePickerField(
-                            label = "Variation",
+                            label = stringResource(R.string.label_variation),
                             selected = selectedVariation,
-                            placeholder = when {
-                                variationOptions.isEmpty() -> "No variations"
-                                else -> "Choose variation"
+                            placeholder = if (variationOptions.isEmpty()) {
+                                stringResource(R.string.placeholder_no_variations)
+                            } else {
+                                stringResource(R.string.placeholder_choose_variation)
                             },
                             onOpen = {
                                 selectedProduct?.id?.let { loadVariations(it) }
@@ -201,7 +209,7 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
                                     rollNumber = it
                                     resetEncodeJob()
                                 },
-                                label = { Text("Roll number") },
+                                label = { Text(stringResource(R.string.label_roll_number)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                             )
@@ -211,7 +219,7 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
                                     rollLength = it
                                     resetEncodeJob()
                                 },
-                                label = { Text("Roll length (optional)") },
+                                label = { Text(stringResource(R.string.label_roll_length_optional)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                             )
@@ -222,7 +230,7 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
                                 batchNumber = it
                                 resetEncodeJob()
                             },
-                            label = { Text("Batch number (optional)") },
+                            label = { Text(stringResource(R.string.label_batch_number_optional)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                         )
@@ -232,7 +240,7 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
                                 expiryDate = it
                                 resetEncodeJob()
                             },
-                            label = { Text("Expiry date (optional, YYYY-MM-DD)") },
+                            label = { Text(stringResource(R.string.label_expiry_date_optional)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                         )
@@ -247,13 +255,13 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
             })
 
             ErpPrimaryButton(
-                text = "1. Request EPC from server",
+                text = stringResource(R.string.encode_step_request_epc),
                 enabled = canRequestEncode,
                 onClick = {
                     scope.launch {
                         runCatching {
                             resetWriteFlow()
-                            val productId = selectedProduct?.id ?: error("Choose a product")
+                            val productId = selectedProduct?.id ?: error(context.getString(R.string.encode_error_choose_product))
                             val res = container.api.requestEncode(
                                 EncodeRequest(
                                     product_id = productId,
@@ -267,12 +275,14 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
                             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                             jobId = res.body()?.data?.job_id
                             epcToWrite = res.body()?.data?.epc?.trim()?.uppercase().orEmpty()
-                            if (epcToWrite.isBlank()) error("Server returned empty EPC")
+                            if (epcToWrite.isBlank()) error(context.getString(R.string.encode_error_empty_epc))
                             val summary = buildString {
-                                append("EPC to write: $epcToWrite")
+                                append(context.getString(R.string.encode_epc_summary, epcToWrite))
                                 selectedProduct?.title?.let { append(" · $it") }
                                 selectedVariation?.title?.let { append(" · $it") }
-                                if (isRollProduct && rollNumber.isNotBlank()) append(" · Roll $rollNumber")
+                                if (isRollProduct && rollNumber.isNotBlank()) {
+                                    append(context.getString(R.string.encode_epc_summary_roll, rollNumber))
+                                }
                             }
                             summary
                         }.onSuccess { message = it }.onFailure { message = it.message }
@@ -282,7 +292,7 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
 
             if (epcToWrite.isNotBlank()) {
                 Text(
-                    "Target EPC",
+                    stringResource(R.string.encode_target_epc),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -294,22 +304,30 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
             }
 
             ErpPrimaryButton(
-                text = if (sourceTagEpc == null) "2. Use latest scan as blank tag" else "Reselect blank tag from scan",
+                text = if (sourceTagEpc == null) {
+                    stringResource(R.string.encode_step_pick_blank)
+                } else {
+                    stringResource(R.string.encode_step_reselect_blank)
+                },
                 enabled = tags.isNotEmpty(),
                 onClick = {
                     val picked = tags.firstOrNull()?.epc
                     if (picked.isNullOrBlank()) {
-                        message = "Hold trigger and scan the blank tag first."
+                        message = context.getString(R.string.encode_error_scan_blank_first)
                     } else {
                         sourceTagEpc = picked
                         writeDone = false
-                        message = "Source tag: $picked — tap Write EPC to program."
+                        message = context.getString(R.string.encode_source_tag_ready, picked)
                     }
                 },
             )
 
             ErpPrimaryButton(
-                text = if (writing) "Writing…" else "3. Write EPC to tag on device",
+                text = if (writing) {
+                    stringResource(R.string.status_writing)
+                } else {
+                    stringResource(R.string.encode_step_write)
+                },
                 enabled = isConnected && !writing && sourceTagEpc != null && epcToWrite.isNotBlank(),
                 onClick = {
                     val source = sourceTagEpc ?: return@ErpPrimaryButton
@@ -321,7 +339,7 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
                             is TagWriteResult.Success -> {
                                 writeDone = true
                                 container.rfidManager.clearScannedTags()
-                                message = "Written ${result.writtenEpc}. Scan again to verify, then confirm."
+                                message = context.getString(R.string.encode_write_success, result.writtenEpc)
                             }
                             is TagWriteResult.Failure -> message = result.message
                         }
@@ -329,33 +347,39 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
                 },
             )
 
+            val emDash = stringResource(R.string.display_empty)
+            val matchOk = stringResource(R.string.status_ok)
+            val matchUnknown = stringResource(R.string.symbol_unknown)
             WorkflowListTable(
-                columns = listOf("Scanned EPC" to 2f, "Match" to 1f),
+                columns = listOf(
+                    stringResource(R.string.encode_col_scanned_epc) to 2f,
+                    stringResource(R.string.encode_col_match) to 1f,
+                ),
                 rows = tags.map { tag ->
                     val match = when {
-                        !writeDone -> "—"
-                        tag.epc.equals(epcToWrite, ignoreCase = true) -> "OK"
-                        else -> "?"
+                        !writeDone -> emDash
+                        tag.epc.equals(epcToWrite, ignoreCase = true) -> matchOk
+                        else -> matchUnknown
                     }
                     listOf(tag.epc, match)
                 },
-                emptyText = "Hold trigger to scan tags after writing.",
+                emptyText = stringResource(R.string.encode_scan_after_write_empty),
             )
 
             ErpPrimaryButton(
-                text = "4. Confirm encode on server",
+                text = stringResource(R.string.encode_step_confirm),
                 enabled = jobId != null && writeDone && tags.any { it.epc.equals(epcToWrite, ignoreCase = true) },
                 onClick = {
                     scope.launch {
                         runCatching {
-                            val jid = jobId ?: error("Request EPC first")
+                            val jid = jobId ?: error(context.getString(R.string.encode_error_request_first))
                             val written = tags.firstOrNull { it.epc.equals(epcToWrite, ignoreCase = true) }?.epc
                                 ?: epcToWrite
                             val res = container.api.confirmEncode(
                                 EncodeConfirmRequest(jid, written, true),
                             )
                             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-                            res.body()?.message ?: "Encoded"
+                            res.body()?.message ?: context.getString(R.string.encode_success_encoded)
                         }.onSuccess {
                             message = it
                             resetEncodeJob()
@@ -368,7 +392,7 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
 
     SearchablePickerSheet(
         visible = productPickerOpen,
-        title = "Product",
+        title = stringResource(R.string.label_product),
         options = productOptions,
         loading = pickerLoading,
         onDismiss = { productPickerOpen = false },
@@ -384,11 +408,11 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
             productPickerOpen = false
         },
         onSearch = { loadProducts(it) },
-        searchHint = "Search product…",
+        searchHint = stringResource(R.string.search_product_hint),
     )
     SearchablePickerSheet(
         visible = variationPickerOpen,
-        title = "Variation",
+        title = stringResource(R.string.label_variation),
         options = variationOptions,
         loading = pickerLoading,
         onDismiss = { variationPickerOpen = false },
@@ -398,6 +422,6 @@ fun EncodeScreen(container: AppContainer, onBack: () -> Unit) {
             variationPickerOpen = false
         },
         onSearch = { selectedProduct?.id?.let { loadVariations(it) } },
-        searchHint = "Filter variations…",
+        searchHint = stringResource(R.string.filter_variations_hint),
     )
 }

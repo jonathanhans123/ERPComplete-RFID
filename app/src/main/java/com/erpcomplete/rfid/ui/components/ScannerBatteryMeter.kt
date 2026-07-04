@@ -18,8 +18,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 
 @Composable
 fun ScannerBatteryMeter(
@@ -48,15 +50,15 @@ fun ScannerBatteryMeter(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "Low",
+                stringResource(R.string.battery_label_low),
                 style = MaterialTheme.typography.labelSmall,
                 color = Color(0xFFD32F2F),
             )
             Text(
                 when {
-                    isPending -> "…"
-                    !hasReading -> "—"
-                    charging == true -> "$level% · charging"
+                    isPending -> stringResource(R.string.symbol_ellipsis)
+                    !hasReading -> stringResource(R.string.symbol_em_dash)
+                    charging == true -> stringResource(R.string.battery_charging_percent, level!!)
                     else -> "$level%"
                 },
                 style = MaterialTheme.typography.titleMedium,
@@ -64,7 +66,7 @@ fun ScannerBatteryMeter(
                 color = meterColor,
             )
             Text(
-                "Full",
+                stringResource(R.string.battery_label_full),
                 style = MaterialTheme.typography.labelSmall,
                 color = Color(0xFF2E7D32),
             )
@@ -116,12 +118,12 @@ fun ScannerBatteryMeter(
         Spacer(Modifier.height(6.dp))
         Text(
             when {
-                isPending -> "Reading battery from reader…"
-                !hasReading -> "Battery level unavailable — tap refresh in Settings"
-                charging == true -> "Charging"
-                level >= 50 -> "Battery good"
-                level >= 20 -> "Battery moderate — charge when convenient"
-                else -> "Battery low — charge soon"
+                isPending -> stringResource(R.string.battery_reading)
+                !hasReading -> stringResource(R.string.battery_unavailable)
+                charging == true -> stringResource(R.string.battery_status_charging)
+                level >= 50 -> stringResource(R.string.battery_status_good)
+                level >= 20 -> stringResource(R.string.battery_status_moderate)
+                else -> stringResource(R.string.battery_status_low)
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

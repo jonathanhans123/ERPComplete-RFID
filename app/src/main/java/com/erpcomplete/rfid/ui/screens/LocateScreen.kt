@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -37,9 +36,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.data.ScanProfile
 import com.erpcomplete.rfid.rfid.RfidManager
@@ -60,7 +63,6 @@ import com.erpcomplete.rfid.util.ApiErrorParser
 import com.erpcomplete.rfid.util.WorkflowJson
 import com.erpcomplete.rfid.util.WorkflowJson.long
 import com.erpcomplete.rfid.util.WorkflowJson.string
-import com.google.gson.JsonObject
 import kotlinx.coroutines.launch
 
 private data class LocateTagRow(
@@ -71,6 +73,7 @@ private data class LocateTagRow(
 
 @Composable
 fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
+    val context = LocalContext.current
     var modeTab by remember { mutableIntStateOf(0) }
     var selectedEpc by remember { mutableStateOf<String?>(null) }
     var manualEpc by remember { mutableStateOf("") }
@@ -106,6 +109,7 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
 
     val activeEpc = selectedEpc ?: manualEpc.trim().uppercase().takeIf { it.isNotBlank() }
     val activeDetail = activeEpc?.uppercase()?.let { resolveMap[it]?.detailInfo }
+    val noTagsError = stringResource(R.string.locate_error_no_tags)
 
     LaunchedEffect(activeEpc) {
         container.rfidManager.setLocateTarget(activeEpc)
@@ -137,7 +141,7 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
                 if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                 productOptions = WorkflowJson.envelopeList(res).mapNotNull { row ->
                     val id = row.long("id") ?: return@mapNotNull null
-                    PickerOption(id, row.string("name") ?: "Product #$id", row.string("sku"))
+                    PickerOption(id, row.string("name") ?: context.getString(R.string.product_fallback_title, id), row.string("sku"))
                 }
             }.onFailure { message = it.message }
             pickerLoading = false
@@ -163,7 +167,9 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
                         if (!name.isNullOrBlank() && !value.isNullOrBlank()) "$name: $value" else null
                     }?.joinToString(" · ")
                     val main = v.get("value")?.asString ?: v.get("display_label")?.asString
-                    val title = listOfNotNull(main, attrText).joinToString(" — ").ifBlank { "Variation #$id" }
+                    val title = listOfNotNull(main, attrText).joinToString(" — ").ifBlank {
+                        context.getString(R.string.variation_fallback_title, id)
+                    }
                     PickerOption(id, title, attrText)
                 } ?: emptyList()
                 if (variationOptions.isEmpty()) selectedVariation = null
@@ -174,7 +180,7 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
 
     fun loadProductTags() {
         val productId = selectedProduct?.id ?: run {
-            message = "Choose a product first"
+            message = context.getString(R.string.locate_error_choose_product)
             return
         }
         scope.launch {
@@ -186,16 +192,18 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
                     variationValueId = selectedVariation?.id,
                 )
                 if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-                val root = WorkflowJson.envelopeObject(res) ?: error("Empty response")
+                val root = WorkflowJson.envelopeObject(res) ?: error(context.getString(R.string.error_empty_response))
                 val tags = root.getAsJsonArray("tags")?.mapNotNull { el ->
                     val obj = el.asJsonObject
                     val epc = obj.string("epc") ?: return@mapNotNull null
                     LocateTagRow(epc = epc, entry = scanResolveEntryFromTagInfo(obj))
                 } ?: emptyList()
-                if (tags.isEmpty()) error("No registered tags for this product")
+                if (tags.isEmpty()) error(context.getString(R.string.locate_error_no_tags))
                 productTags = tags
                 if (tags.size == 1) selectEpc(tags.first().epc)
-                message = "${tags.size} tag${if (tags.size == 1) "" else "s"} found — tap one to locate"
+                context.resources.getQuantityString(R.plurals.locate_tags_found, tags.size, tags.size)
+            }.onSuccess {
+                message = it
             }.onFailure {
                 message = it.message
             }
@@ -204,8 +212,8 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
     }
 
     ErpScaffold(
-        title = "Locate item",
-        subtitle = "Identify a tag, then sweep until green",
+        title = stringResource(R.string.locate_title),
+        subtitle = stringResource(R.string.locate_subtitle),
         onBack = onBack,
     ) {
         Column(
@@ -214,32 +222,42 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            message?.let { StatusBanner(it, isError = it.contains("No registered", true)) }
+            message?.let { StatusBanner(it, isError = it == noTagsError || it.contains(noTagsError, true)) }
 
             if (!isConnected) {
-                StatusBanner("Connect an RFD90 on the Connect tab first.", isError = true)
+                StatusBanner(stringResource(R.string.locate_connect_required), isError = true)
             }
 
             Text(
                 buildString {
-                    append("RF profile: ")
-                    append(if (scanProfile == ScanProfile.DENSE) "Dense (Settings)" else "Range (Settings)")
-                    if (prefilterEnabled && activeEpc != null) append(" · EPC filter on target")
-                    else if (prefilterEnabled) append(" · EPC prefix filter")
+                    append(
+                        stringResource(
+                            if (scanProfile == ScanProfile.DENSE) {
+                                R.string.locate_profile_dense
+                            } else {
+                                R.string.locate_profile_range
+                            },
+                        ),
+                    )
+                    if (prefilterEnabled && activeEpc != null) {
+                        append(stringResource(R.string.locate_epc_filter_target))
+                    } else if (prefilterEnabled) {
+                        append(stringResource(R.string.locate_epc_filter_prefix))
+                    }
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             TabRow(modeTab) {
-                Tab(selected = modeTab == 0, onClick = { modeTab = 0 }, text = { Text("Scan first") })
-                Tab(selected = modeTab == 1, onClick = { modeTab = 1 }, text = { Text("By product") })
+                Tab(selected = modeTab == 0, onClick = { modeTab = 0 }, text = { Text(stringResource(R.string.locate_tab_scan_first)) })
+                Tab(selected = modeTab == 1, onClick = { modeTab = 1 }, text = { Text(stringResource(R.string.locate_tab_by_product)) })
             }
 
             when (modeTab) {
                 0 -> {
                     Text(
-                        "Hold top trigger to read nearby tags, then tap a row to pick which EPC to locate.",
+                        stringResource(R.string.locate_scan_first_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -262,14 +280,14 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
                         },
                         selectedEpc = activeEpc,
                         onSelect = { selectEpc(it) },
-                        emptyText = "Hold top trigger to scan tags in front of you.",
+                        emptyText = stringResource(R.string.locate_empty_scan),
                     )
                 }
                 1 -> {
                     SearchablePickerField(
-                        label = "Product",
+                        label = stringResource(R.string.label_product),
                         selected = selectedProduct,
-                        placeholder = "Choose product",
+                        placeholder = stringResource(R.string.placeholder_choose_product),
                         onOpen = {
                             productPickerOpen = true
                             loadProducts("")
@@ -283,9 +301,13 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
                     )
                     if (selectedProduct != null) {
                         SearchablePickerField(
-                            label = "Variation",
+                            label = stringResource(R.string.label_variation),
                             selected = selectedVariation,
-                            placeholder = if (variationOptions.isEmpty()) "No variations" else "Choose variation (optional)",
+                            placeholder = if (variationOptions.isEmpty()) {
+                                stringResource(R.string.placeholder_no_variations)
+                            } else {
+                                stringResource(R.string.placeholder_choose_variation_optional)
+                            },
                             onOpen = {
                                 selectedProduct?.id?.let { loadVariations(it) }
                                 variationPickerOpen = true
@@ -297,13 +319,13 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
                             },
                         )
                         ErpPrimaryButton(
-                            text = "Find registered tags",
+                            text = stringResource(R.string.locate_find_tags),
                             loading = productTagsLoading,
                             onClick = { loadProductTags() },
                         )
                         if (productTags.isNotEmpty()) {
                             Text(
-                                "Registered tags — tap to locate",
+                                stringResource(R.string.locate_registered_tags_header),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -319,14 +341,14 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
             }
 
             HorizontalDivider()
-            Text("Or enter EPC directly", style = MaterialTheme.typography.labelMedium)
+            Text(stringResource(R.string.locate_manual_epc_label), style = MaterialTheme.typography.labelMedium)
             OutlinedTextField(
                 value = manualEpc,
                 onValueChange = {
                     manualEpc = it.uppercase()
                     selectedEpc = null
                 },
-                label = { Text("EPC") },
+                label = { Text(stringResource(R.string.label_epc)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 enabled = isConnected,
@@ -339,20 +361,20 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Locating", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.locate_status_locating), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             activeEpc,
                             style = MaterialTheme.typography.bodySmall,
                             fontFamily = FontFamily.Monospace,
                         )
                     }
-                    TextButton(onClick = { clearSelection() }) { Text("Clear") }
+                    TextButton(onClick = { clearSelection() }) { Text(stringResource(R.string.action_clear)) }
                 }
                 if (activeDetail != null && resolveMap[activeEpc.uppercase()]?.status == ScanResolveStatus.REGISTERED) {
                     TagInfoDetailContent(activeDetail, compact = true)
                 }
                 Text(
-                    "Hold top trigger and sweep · release to stop · green = closer",
+                    stringResource(R.string.locate_sweep_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -362,14 +384,14 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                 )
             } else if (isConnected) {
-                StatusBanner("Select or scan a tag above, then hold top trigger to locate it.")
+                StatusBanner(stringResource(R.string.locate_select_tag_hint))
             }
         }
     }
 
     SearchablePickerSheet(
         visible = productPickerOpen,
-        title = "Product",
+        title = stringResource(R.string.label_product),
         options = productOptions,
         loading = pickerLoading,
         onDismiss = { productPickerOpen = false },
@@ -381,11 +403,11 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
             it.id.let { id -> loadVariations(id) }
         },
         onSearch = { loadProducts(it) },
-        searchHint = "Search product…",
+        searchHint = stringResource(R.string.search_product_hint),
     )
     SearchablePickerSheet(
         visible = variationPickerOpen,
-        title = "Variation",
+        title = stringResource(R.string.label_variation),
         options = variationOptions,
         loading = pickerLoading,
         onDismiss = { variationPickerOpen = false },
@@ -395,7 +417,7 @@ fun LocateScreen(container: AppContainer, onBack: () -> Unit) {
             clearSelection()
         },
         onSearch = { },
-        searchHint = "Variation",
+        searchHint = stringResource(R.string.label_variation),
     )
 }
 
@@ -407,13 +429,13 @@ private fun LocateTagListHeader(count: Int, onClear: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "$count scan${if (count == 1) "" else "s"}",
+            pluralStringResource(R.plurals.locate_scan_count, count, count),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
         )
         TextButton(onClick = onClear, enabled = count > 0) {
             androidx.compose.material3.Icon(Icons.Default.ClearAll, contentDescription = null)
-            Text("Clear")
+            Text(stringResource(R.string.action_clear))
         }
     }
 }
@@ -425,6 +447,8 @@ private fun LocateSelectableTagList(
     onSelect: (String) -> Unit,
     emptyText: String,
 ) {
+    val context = LocalContext.current
+    val emDash = stringResource(R.string.display_empty)
     if (rows.isEmpty() && emptyText.isNotBlank()) {
         Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
             Text(emptyText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -437,9 +461,9 @@ private fun LocateSelectableTagList(
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        Text("EPC", Modifier.weight(1.2f), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-        Text("Item", Modifier.weight(1.4f), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-        Text("RSSI", Modifier.weight(0.4f), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+        Text(stringResource(R.string.locate_col_epc), Modifier.weight(1.2f), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+        Text(stringResource(R.string.locate_col_item), Modifier.weight(1.4f), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+        Text(stringResource(R.string.locate_col_rssi), Modifier.weight(0.4f), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
     }
     HorizontalDivider()
     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 260.dp)) {
@@ -447,7 +471,7 @@ private fun LocateSelectableTagList(
             val selected = row.epc.equals(selectedEpc, ignoreCase = true)
             val bg = when {
                 selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
-                row.entry.status == com.erpcomplete.rfid.ui.components.ScanResolveStatus.UNKNOWN ->
+                row.entry.status == ScanResolveStatus.UNKNOWN ->
                     MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
                 else -> Color.Transparent
             }
@@ -466,13 +490,13 @@ private fun LocateSelectableTagList(
                     fontFamily = FontFamily.Monospace,
                 )
                 Text(
-                    scanResolveLabel(row.entry),
+                    scanResolveLabel(context, row.entry),
                     Modifier.weight(1.4f),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
                 )
                 Text(
-                    row.rssi?.toString() ?: "—",
+                    row.rssi?.toString() ?: emDash,
                     Modifier.weight(0.4f),
                     style = MaterialTheme.typography.bodySmall,
                 )

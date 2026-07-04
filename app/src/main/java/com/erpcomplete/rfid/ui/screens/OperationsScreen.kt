@@ -14,8 +14,10 @@ import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.WorkflowTile
 import com.erpcomplete.rfid.ui.navigation.Routes
@@ -25,17 +27,20 @@ private data class Op(val route: String, val title: String, val desc: String, va
 @Composable
 fun OperationsScreen(navController: NavHostController) {
     val ops = listOf(
-        Op(Routes.RECEIVE, "Goods receipt", "Match tags to PO lines", Icons.Default.LocalShipping),
-        Op(Routes.PUTAWAY, "Putaway", "Assign tags to locations", Icons.Default.AddLocation),
-        Op(Routes.PICK, "Pick list", "Pick, pack & cut", Icons.Default.ShoppingCart),
-        Op(Routes.CYCLE_COUNT, "Stock opname", "Count & approve ongoing", Icons.Default.Inventory),
-        Op(Routes.RFID_SESSION, "RFID location count", "Scan all tags at a bin", Icons.Default.Radar),
-        Op(Routes.ENCODE, "Encode tag", "Write new EPC to label", Icons.Default.QrCode),
-        Op(Routes.LOCATE, "Locate item", "Find tag in warehouse", Icons.Default.Search),
-        Op(Routes.INVENTORY, "Inventory", "Warehouses, locations & stock", Icons.Default.Store),
+        Op(Routes.RECEIVE, stringResource(R.string.op_goods_receipt_title), stringResource(R.string.op_goods_receipt_desc), Icons.Default.LocalShipping),
+        Op(Routes.PUTAWAY, stringResource(R.string.op_putaway_title), stringResource(R.string.op_putaway_desc), Icons.Default.AddLocation),
+        Op(Routes.PICK, stringResource(R.string.op_pick_title), stringResource(R.string.op_pick_desc), Icons.Default.ShoppingCart),
+        Op(Routes.CYCLE_COUNT, stringResource(R.string.op_cycle_count_title), stringResource(R.string.op_cycle_count_desc), Icons.Default.Inventory),
+        Op(Routes.RFID_SESSION, stringResource(R.string.op_rfid_session_title), stringResource(R.string.op_rfid_session_desc), Icons.Default.Radar),
+        Op(Routes.ENCODE, stringResource(R.string.encode_title), stringResource(R.string.op_encode_desc), Icons.Default.QrCode),
+        Op(Routes.LOCATE, stringResource(R.string.locate_title), stringResource(R.string.op_locate_desc), Icons.Default.Search),
+        Op(Routes.INVENTORY, stringResource(R.string.inventory_title), stringResource(R.string.op_inventory_desc), Icons.Default.Store),
     )
 
-    ErpScaffold(title = "Work", subtitle = "Warehouse RFID workflows") {
+    ErpScaffold(
+        title = stringResource(R.string.operations_title),
+        subtitle = stringResource(R.string.operations_subtitle),
+    ) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(1),
             verticalArrangement = Arrangement.spacedBy(12.dp),

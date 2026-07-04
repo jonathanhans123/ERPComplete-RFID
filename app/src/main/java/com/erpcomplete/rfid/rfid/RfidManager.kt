@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.text.format.Formatter
 import android.util.Log
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.ReaderStore
 import com.erpcomplete.rfid.data.RfidSettingsStore
 import com.erpcomplete.rfid.data.ScanProfile
@@ -175,10 +176,12 @@ class RfidManager(
     suspend fun writeEpcToTag(sourceEpc: String, newEpc: String): TagWriteResult {
         return inventoryMutex.withLock {
             withContext(Dispatchers.IO) {
-                val r = reader ?: return@withContext TagWriteResult.Failure("Reader not connected")
+                val r = reader ?: return@withContext TagWriteResult.Failure(
+                    appContext.getString(R.string.rfid_error_not_connected),
+                )
                 if (inventoryActive) stopInventoryInternal()
                 if (locationingActive) stopLocationingInternal()
-                RfidHardwareOps.writeEpc(r, sourceEpc, newEpc)
+                RfidHardwareOps.writeEpc(appContext, r, sourceEpc, newEpc)
             }
         }
     }
@@ -200,7 +203,7 @@ class RfidManager(
         val parsed = PairingBarcodeParser.parse(raw)
         if (parsed == null) {
             AppLog.w("Unrecognized pairing barcode: ${raw.take(80)}")
-            logConnectionError("Unrecognized pairing barcode. Scan the RFD90 Scan-to-Connect code again.")
+            logConnectionError(appContext.getString(R.string.rfid_error_unrecognized_barcode))
             return
         }
         AppLog.i(
@@ -210,19 +213,14 @@ class RfidManager(
             _connectionState.value = RfidConnectionState.Pairing
             try {
                 if (!PhoneBluetooth.isEnabled(appContext)) {
-                    logConnectionError(
-                        "Bluetooth is off. Turn on Bluetooth in Settings, then scan the reader QR again.",
-                    )
+                    logConnectionError(appContext.getString(R.string.rfid_error_bluetooth_off_qr))
                     return@launch
                 }
                 val paired = withContext(Dispatchers.IO) {
                     BluetoothPairingHelper.pairIfNeeded(appContext, parsed)
                 }
                 if (!paired) {
-                    logConnectionError(
-                        "Bluetooth pairing failed. Confirm Bluetooth is on, grant Nearby devices permission, " +
-                            "and accept the pairing prompt on the phone.",
-                    )
+                    logConnectionError(appContext.getString(R.string.rfid_error_pairing_failed_permissions))
                     return@launch
                 }
                 withContext(Dispatchers.IO) {
@@ -238,7 +236,7 @@ class RfidManager(
                     attempts = 10,
                 )
             } catch (e: Exception) {
-                logConnectionError(e.message ?: "Pairing failed")
+                logConnectionError(e.message ?: appContext.getString(R.string.rfid_error_pairing_failed))
             }
         }
     }
@@ -269,9 +267,7 @@ class RfidManager(
                 }
                 delay(1500)
             }
-            logConnectionError(
-                "Reader not found. On the RFD90 open Scan-to-Connect, complete pairing, then tap Connect again.",
-            )
+            logConnectionError(appContext.getString(R.string.rfid_error_reader_not_found))
         }
     }
 
@@ -295,10 +291,12 @@ class RfidManager(
                     }
                 }
             } catch (e: InvalidUsageException) {
-                logConnectionError("Invalid usage: ${e.message}")
+                logConnectionError(appContext.getString(R.string.rfid_error_invalid_usage, e.message ?: ""))
                 return@withContext
             } catch (e: OperationFailureException) {
-                logConnectionError("Connect failed: ${e.vendorMessage}")
+                logConnectionError(
+                    appContext.getString(R.string.rfid_error_connect_failed, e.vendorMessage ?: ""),
+                )
                 return@withContext
             }
 
@@ -339,7 +337,7 @@ class RfidManager(
             if (r == null || !r.isConnected) {
                 _firmwareUpdate.value = FirmwareUpdateState(
                     phase = FirmwareUpdateState.Phase.FAILED,
-                    message = "Connect the reader first.",
+                    message = appContext.getString(R.string.rfid_firmware_connect_first),
                 )
                 return@launch
             }
@@ -350,7 +348,7 @@ class RfidManager(
             if (model == null) {
                 _firmwareUpdate.value = FirmwareUpdateState(
                     phase = FirmwareUpdateState.Phase.FAILED,
-                    message = "Unsupported reader model for firmware catalog.",
+                    message = appContext.getString(R.string.rfid_firmware_unsupported_model),
                 )
                 return@launch
             }
@@ -358,26 +356,35 @@ class RfidManager(
             _firmwareUpdate.value = FirmwareUpdateState(
                 phase = FirmwareUpdateState.Phase.CHECKING,
                 currentVersion = current,
-                message = "Checking Zebra firmware catalog…",
+                message = appContext.getString(R.string.rfid_firmware_checking_catalog),
             )
             runCatching {
                 val result = firmwareRepository.checkForUpdate(model, current, refresh)
                 settingsStore.markFirmwareCheckedNow()
-                if (!result.update_available) {
-                    FirmwareUpdateState(
+                when {
+                    !result.update_available && result.latest_version == null -> FirmwareUpdateState(
                         phase = FirmwareUpdateState.Phase.UP_TO_DATE,
                         currentVersion = current,
                         availableVersion = result.latest_version,
-                        message = "Reader firmware is up to date.",
+                        message = result.catalog_message
+                            ?: appContext.getString(R.string.rfid_firmware_catalog_unavailable),
                     )
-                } else {
-                    FirmwareUpdateState(
+                    !result.update_available -> FirmwareUpdateState(
+                        phase = FirmwareUpdateState.Phase.UP_TO_DATE,
+                        currentVersion = current,
+                        availableVersion = result.latest_version,
+                        message = appContext.getString(R.string.rfid_firmware_up_to_date),
+                    )
+                    else -> FirmwareUpdateState(
                         phase = FirmwareUpdateState.Phase.UPDATE_AVAILABLE,
                         currentVersion = current,
                         availableVersion = result.latest_version,
                         downloadUrl = result.download_url,
                         fileName = result.file_name,
-                        message = "Firmware ${result.latest_version} available from Zebra.",
+                        message = appContext.getString(
+                            R.string.rfid_firmware_available,
+                            result.latest_version,
+                        ),
                     )
                 }
             }.onSuccess {
@@ -386,7 +393,7 @@ class RfidManager(
                 _firmwareUpdate.value = FirmwareUpdateState(
                     phase = FirmwareUpdateState.Phase.FAILED,
                     currentVersion = current,
-                    message = it.message ?: "Firmware check failed.",
+                    message = it.message ?: appContext.getString(R.string.rfid_firmware_check_failed),
                 )
             }
         }
@@ -400,7 +407,7 @@ class RfidManager(
             if (url.isNullOrBlank()) {
                 _firmwareUpdate.value = state.copy(
                     phase = FirmwareUpdateState.Phase.FAILED,
-                    message = "No firmware download URL.",
+                    message = appContext.getString(R.string.rfid_firmware_no_download_url),
                 )
                 return@launch
             }
@@ -408,7 +415,7 @@ class RfidManager(
             _firmwareUpdate.value = state.copy(
                 phase = FirmwareUpdateState.Phase.DOWNLOADING,
                 progressPercent = 0,
-                message = "Downloading firmware from Zebra…",
+                message = appContext.getString(R.string.rfid_firmware_downloading),
             )
             runCatching {
                 firmwareRepository.downloadFirmware(url, target) { progress ->
@@ -421,12 +428,12 @@ class RfidManager(
                     phase = FirmwareUpdateState.Phase.READY_TO_INSTALL,
                     progressPercent = 100,
                     localFilePath = file.absolutePath,
-                    message = "Firmware downloaded. Install when the reader battery is above 20%.",
+                    message = appContext.getString(R.string.rfid_firmware_downloaded_ready),
                 )
             }.onFailure {
                 _firmwareUpdate.value = _firmwareUpdate.value.copy(
                     phase = FirmwareUpdateState.Phase.FAILED,
-                    message = it.message ?: "Firmware download failed.",
+                    message = it.message ?: appContext.getString(R.string.rfid_firmware_download_failed),
                 )
             }
         }
@@ -440,7 +447,7 @@ class RfidManager(
             if (path.isNullOrBlank() || r == null || !r.isConnected) {
                 _firmwareUpdate.value = state.copy(
                     phase = FirmwareUpdateState.Phase.FAILED,
-                    message = "Connect the reader and download firmware first.",
+                    message = appContext.getString(R.string.rfid_firmware_connect_and_download_first),
                 )
                 return@launch
             }
@@ -448,7 +455,7 @@ class RfidManager(
             if (battery != null && battery < 20) {
                 _firmwareUpdate.value = state.copy(
                     phase = FirmwareUpdateState.Phase.FAILED,
-                    message = "Battery is below 20%. Charge the RFD90 before updating.",
+                    message = appContext.getString(R.string.rfid_firmware_battery_low),
                 )
                 return@launch
             }
@@ -458,23 +465,23 @@ class RfidManager(
             _firmwareUpdate.value = state.copy(
                 phase = FirmwareUpdateState.Phase.INSTALLING,
                 progressPercent = 0,
-                message = "Installing firmware on reader…",
+                message = appContext.getString(R.string.rfid_firmware_installing),
             )
             withContext(Dispatchers.IO) {
                 runCatching {
                     val outcome = r.Config.updateFirmware(path, localHostAddress())
                     if (outcome != RFIDResults.RFID_API_SUCCESS) {
-                        error("Reader rejected firmware update ($outcome)")
+                        error(appContext.getString(R.string.rfid_firmware_rejected, outcome.toString()))
                     }
                 }.onSuccess {
                     _firmwareUpdate.value = _firmwareUpdate.value.copy(
                         phase = FirmwareUpdateState.Phase.INSTALLING,
-                        message = "Firmware transfer started. Keep the reader nearby until it reboots.",
+                        message = appContext.getString(R.string.rfid_firmware_transfer_started),
                     )
                 }.onFailure {
                     _firmwareUpdate.value = _firmwareUpdate.value.copy(
                         phase = FirmwareUpdateState.Phase.FAILED,
-                        message = it.message ?: "Firmware install failed.",
+                        message = it.message ?: appContext.getString(R.string.rfid_firmware_install_failed),
                     )
                 }
             }
@@ -1059,14 +1066,16 @@ class RfidManager(
                 _firmwareUpdate.value = current.copy(
                     phase = FirmwareUpdateState.Phase.FAILED,
                     progressPercent = progress,
-                    message = statusText.removePrefix("Error:").trim().ifBlank { "Firmware update failed." },
+                    message = statusText.removePrefix("Error:").trim().ifBlank {
+                        appContext.getString(R.string.rfid_firmware_update_failed)
+                    },
                 )
             }
             statusText == "FWUpdate_END" && progress >= 100 -> {
                 _firmwareUpdate.value = current.copy(
                     phase = FirmwareUpdateState.Phase.SUCCESS,
                     progressPercent = 100,
-                    message = "Firmware updated. Reconnect after the reader reboots.",
+                    message = appContext.getString(R.string.rfid_firmware_updated_reconnect),
                 )
                 reader?.takeIf { it.isConnected }?.let { publishDiagnostics(it) }
             }
@@ -1074,7 +1083,7 @@ class RfidManager(
                 _firmwareUpdate.value = current.copy(
                     phase = FirmwareUpdateState.Phase.INSTALLING,
                     progressPercent = progress.coerceIn(0, 100),
-                    message = "Installing firmware… $progress%",
+                    message = appContext.getString(R.string.rfid_firmware_installing_progress, progress),
                 )
             }
         }

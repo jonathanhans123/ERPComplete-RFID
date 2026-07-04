@@ -35,10 +35,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import android.content.Context
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.data.model.MobileInventoryPermissions
 import com.erpcomplete.rfid.data.remote.CreateStockAdjustmentRequest
@@ -64,6 +68,7 @@ import com.erpcomplete.rfid.ui.components.SearchablePickerSheet
 import com.erpcomplete.rfid.ui.components.StatusBanner
 import com.erpcomplete.rfid.ui.components.WorkflowTile
 import com.erpcomplete.rfid.ui.permissions.rememberMobileInventoryPermissions
+import com.erpcomplete.rfid.ui.util.UiStrings
 import com.erpcomplete.rfid.ui.components.rememberWorkflowLiveList
 import com.erpcomplete.rfid.util.ApiErrorParser
 import com.erpcomplete.rfid.util.DisplayFormat
@@ -89,11 +94,11 @@ import com.erpcomplete.rfid.util.WorkflowJson.rollLengthLabel
 import com.erpcomplete.rfid.util.WorkflowJson.string
 import com.erpcomplete.rfid.util.WorkflowJson.variationLabel
 import com.google.gson.JsonArray
+import com.erpcomplete.rfid.util.StatusMessage
 import com.erpcomplete.rfid.util.StockLinePreset
 import com.erpcomplete.rfid.util.UNMARKED_STOCK_LOCATION_ID
 import com.erpcomplete.rfid.util.toStockLinePreset
 import com.erpcomplete.rfid.util.launchWorkflow
-import com.erpcomplete.rfid.util.toStockLinePreset
 import com.erpcomplete.rfid.util.workspaceContext
 import com.google.gson.JsonObject
 import java.time.LocalDate
@@ -131,22 +136,9 @@ private data class HubTile(
     val step: InvStep,
 )
 
-private val LOCATION_TYPES = listOf(
-    "storage" to "Storage",
-    "receiving" to "Receiving",
-    "picking" to "Picking",
-    "shipping" to "Shipping",
-    "quality" to "Quality",
-)
+private val LOCATION_TYPE_CODES = listOf("storage", "receiving", "picking", "shipping", "quality")
 
-private val ADJUSTMENT_TYPES = listOf(
-    "correction" to "Correction",
-    "loss" to "Loss",
-    "damage" to "Damage",
-    "expiry" to "Expiry",
-    "theft" to "Theft",
-    "other" to "Other",
-)
+private val ADJUSTMENT_TYPE_CODES = listOf("correction", "loss", "damage", "expiry", "theft", "other")
 
 private fun InvStep.encode(): String = when (this) {
     InvStep.Hub -> "hub"
@@ -197,13 +189,13 @@ fun InventoryScreen(
     val permissions = rememberMobileInventoryPermissions(container)
     val deepLinkDeniedMessage = when {
         initialFlow == "adjust" && !permissions.stockAdjustment.create ->
-            "You do not have permission to create stock adjustments."
+            stringResource(R.string.inventory_perm_adjust_denied)
         initialFlow == "relocate" && !permissions.stockRelocation.create ->
-            "You do not have permission to create stock relocations."
+            stringResource(R.string.inventory_perm_relocate_denied)
         else -> null
     }
     if (deepLinkDeniedMessage != null) {
-        ErpScaffold(title = "Inventory", onBack = onBack) {
+        ErpScaffold(title = stringResource(R.string.inventory_title), onBack = onBack) {
             StatusBanner(deepLinkDeniedMessage, isError = true)
         }
         return
@@ -320,17 +312,56 @@ private fun InventoryHub(
     permissions: MobileInventoryPermissions,
 ) {
     val tiles = buildList {
-        add(HubTile("Warehouse", "Your current workspace warehouse", Icons.Default.Store, InvStep.Warehouses))
-        add(HubTile("Locations", "Bins, racks & zones per warehouse", Icons.Default.Place, InvStep.Locations))
-        add(HubTile("Stock by location", "View on-hand qty at each bin", Icons.Default.Inventory, InvStep.StockByLocation))
+        add(
+            HubTile(
+                stringResource(R.string.inventory_hub_warehouse_title),
+                stringResource(R.string.inventory_hub_warehouse_desc),
+                Icons.Default.Store,
+                InvStep.Warehouses,
+            ),
+        )
+        add(
+            HubTile(
+                stringResource(R.string.inventory_hub_locations_title),
+                stringResource(R.string.inventory_hub_locations_desc),
+                Icons.Default.Place,
+                InvStep.Locations,
+            ),
+        )
+        add(
+            HubTile(
+                stringResource(R.string.inventory_hub_stock_title),
+                stringResource(R.string.inventory_hub_stock_desc),
+                Icons.Default.Inventory,
+                InvStep.StockByLocation,
+            ),
+        )
         if (permissions.stockAdjustment.read) {
-            add(HubTile("Stock adjustments", "Fix wrong quantities on the floor", Icons.Default.Tune, InvStep.Adjustments))
+            add(
+                HubTile(
+                    stringResource(R.string.inventory_hub_adjustments_title),
+                    stringResource(R.string.inventory_hub_adjustments_desc),
+                    Icons.Default.Tune,
+                    InvStep.Adjustments,
+                ),
+            )
         }
         if (permissions.stockRelocation.read) {
-            add(HubTile("Stock relocations", "Move stock between bins", Icons.Default.SwapHoriz, InvStep.Relocations))
+            add(
+                HubTile(
+                    stringResource(R.string.inventory_hub_relocations_title),
+                    stringResource(R.string.inventory_hub_relocations_desc),
+                    Icons.Default.SwapHoriz,
+                    InvStep.Relocations,
+                ),
+            )
         }
     }
-    ErpScaffold(title = "Inventory", subtitle = "Master data & on-hand stock", onBack = onBack) {
+    ErpScaffold(
+        title = stringResource(R.string.inventory_title),
+        subtitle = stringResource(R.string.inventory_subtitle),
+        onBack = onBack,
+    ) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(1),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -352,6 +383,9 @@ private fun WarehouseInfoScreen(
     container: AppContainer,
     onBack: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val emDash = stringResource(R.string.symbol_em_dash)
+    val warehouseTitleFallback = stringResource(R.string.inventory_hub_warehouse_title)
     val workspaceWhId = container.workspaceContext().warehouseId
     val workspaceWhName = container.authStore.warehouseNameBlocking()
     var loading by remember { mutableStateOf(true) }
@@ -364,28 +398,31 @@ private fun WarehouseInfoScreen(
         message = null
         val whId = workspaceWhId
         if (whId == null) {
-            message = "No warehouse selected. Choose a workspace from Home or Settings."
+            message = context.getString(R.string.inventory_no_warehouse_selected)
             loading = false
             return@LaunchedEffect
         }
         runCatching {
             val res = container.api.getWarehouse(whId)
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-            warehouse = envelopeObject(res) ?: error("Empty warehouse")
+            warehouse = envelopeObject(res) ?: error(context.getString(R.string.error_empty_warehouse))
         }.onFailure { message = it.message }
         loading = false
     }
 
     ErpScaffold(
-        title = warehouse?.string("name") ?: workspaceWhName ?: "Warehouse",
-        subtitle = "Current workspace",
+        title = warehouse?.string("name") ?: workspaceWhName ?: warehouseTitleFallback,
+        subtitle = stringResource(R.string.inventory_current_workspace),
         onBack = onBack,
     ) {
-        message?.let { StatusBanner(it, isError = it.contains("Error", true) || it.contains("Failed", true)) }
+        message?.let { StatusBanner(it, isError = StatusMessage.looksLikeError(it)) }
         when {
             loading -> WarehouseInfoSkeleton()
             warehouse == null && message == null -> {
-                Text("Warehouse not found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    stringResource(R.string.inventory_warehouse_not_found),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             warehouse != null -> {
                 val row = warehouse!!
@@ -395,13 +432,20 @@ private fun WarehouseInfoScreen(
                 ) {
                     ErpCard {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(row.string("name") ?: "—", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                row.string("name") ?: emDash,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
                             row.string("code")?.takeIf { it.isNotBlank() }?.let {
-                                Text("Code: $it", style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    stringResource(R.string.label_code_value, it),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                             }
                             val active = row.boolean("is_active") != false
                             Text(
-                                if (active) "Active" else "Inactive",
+                                stringResource(if (active) R.string.status_active else R.string.status_inactive),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                             )
@@ -409,25 +453,29 @@ private fun WarehouseInfoScreen(
                     }
                     ErpCard {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("Details", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                            WarehouseInfoRow("Type", row.string("warehouse_type")?.let { DisplayFormat.status(it) })
-                            WarehouseInfoRow("Address", row.string("address"))
-                            WarehouseInfoRow("City / state / country", warehouseRegionLabel(row))
-                            WarehouseInfoRow("Phone", row.string("phone"))
-                            WarehouseInfoRow("Email", row.string("email"))
+                            Text(
+                                stringResource(R.string.label_details),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            WarehouseInfoRow(stringResource(R.string.label_type), row.string("warehouse_type")?.let { UiStrings.apiStatus(it) })
+                            WarehouseInfoRow(stringResource(R.string.label_address), row.string("address"))
+                            WarehouseInfoRow(stringResource(R.string.label_city_state_country), warehouseRegionLabel(row))
+                            WarehouseInfoRow(stringResource(R.string.label_phone), row.string("phone"))
+                            WarehouseInfoRow(stringResource(R.string.label_email), row.string("email"))
                             row.double("capacity")?.let { cap ->
-                                WarehouseInfoRow("Capacity", DisplayFormat.qty(cap))
+                                WarehouseInfoRow(stringResource(R.string.label_capacity), DisplayFormat.qty(cap))
                             }
                             row.string("description")?.takeIf { it.isNotBlank() }?.let {
-                                WarehouseInfoRow("Description", it)
+                                WarehouseInfoRow(stringResource(R.string.label_description), it)
                             }
                             row.obj("manager")?.string("name")?.let {
-                                WarehouseInfoRow("Manager", it)
+                                WarehouseInfoRow(stringResource(R.string.label_manager), it)
                             }
                         }
                     }
                     Text(
-                        "Warehouse master data is managed on the web ERP. This device shows your assigned workspace only.",
+                        stringResource(R.string.inventory_warehouse_web_managed_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -475,6 +523,7 @@ private fun LocationListScreen(
     onCreate: () -> Unit,
     onEdit: (Long) -> Unit,
 ) {
+    val emDash = stringResource(R.string.symbol_em_dash)
     val whId = container.workspaceContext().warehouseId
     val sortSearch = rememberTableSortSearch()
     val liveList = rememberWorkflowLiveList(enabled = true) { page ->
@@ -486,7 +535,12 @@ private fun LocationListScreen(
         if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
         envelopePage(res, page)
     }
-    val sortLabels = listOf("Location", "Zone", "Type", "Status")
+    val sortLabels = listOf(
+        stringResource(R.string.label_location),
+        stringResource(R.string.label_zone),
+        stringResource(R.string.label_type),
+        stringResource(R.string.label_status),
+    )
     val visibleRows = remember(liveList.rows, sortSearch.searchQuery, sortSearch.sortColumnIndex, sortSearch.sortDirection) {
         liveList.rows.applyCardListSortSearch(
             sortSearch,
@@ -500,11 +554,13 @@ private fun LocationListScreen(
     }
 
     ErpScaffold(
-        title = "Locations",
-        subtitle = "Workspace warehouse",
+        title = stringResource(R.string.inventory_locations_title),
+        subtitle = stringResource(R.string.inventory_workspace_warehouse),
         onBack = onBack,
         actions = {
-            IconButton(onClick = onCreate) { Icon(Icons.Default.Add, contentDescription = "Add location") }
+            IconButton(onClick = onCreate) {
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_add_location))
+            }
         },
     ) {
         liveList.error?.let { StatusBanner(it, isError = true) }
@@ -513,22 +569,31 @@ private fun LocationListScreen(
             itemCount = visibleRows.size,
             sortSearch = sortSearch,
             sortLabels = sortLabels,
-            searchPlaceholder = "Search locations…",
+            searchPlaceholder = stringResource(R.string.search_locations_hint),
         )
         when {
             liveList.loading && visibleRows.isEmpty() -> WorkflowListCardSkeleton(5)
-            visibleRows.isEmpty() -> Text("No locations yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            visibleRows.isEmpty() -> Text(
+                stringResource(R.string.inventory_locations_empty),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             else -> visibleRows.forEach { row ->
             val id = row.long("id") ?: return@forEach
             ErpCard(onClick = { onEdit(id) }) {
-                Text(WorkflowJson.locationLabel(row).ifBlank { row.string("zone_name") ?: "—" }, fontWeight = FontWeight.SemiBold)
                 Text(
-                    listOfNotNull(row.string("zone_code"), row.string("location_type")).joinToString(" · "),
+                    WorkflowJson.locationLabel(row).ifBlank { row.string("zone_name") ?: emDash },
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    listOfNotNull(
+                        row.string("zone_code"),
+                        row.string("location_type")?.let { UiStrings.locationType(it) },
+                    ).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 val active = row.boolean("is_active") != false
                 Text(
-                    if (active) "Active" else "Inactive",
+                    stringResource(if (active) R.string.status_active else R.string.status_inactive),
                     style = MaterialTheme.typography.labelMedium,
                     color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                 )
@@ -545,6 +610,7 @@ private fun LocationFormScreen(
     onBack: () -> Unit,
     onSaved: () -> Unit,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var loading by remember { mutableStateOf(false) }
     var formLoading by remember { mutableStateOf(locationId != null) }
@@ -567,7 +633,6 @@ private fun LocationFormScreen(
     var typePickerOpen by remember { mutableStateOf(false) }
     var warehouseOptions by remember { mutableStateOf<List<PickerOption>>(emptyList()) }
     var selectedWarehouse by remember { mutableStateOf<PickerOption?>(null) }
-    var selectedType by remember { mutableStateOf(LOCATION_TYPES.first()) }
 
     LaunchedEffect(Unit) {
         runCatching {
@@ -594,7 +659,7 @@ private fun LocationFormScreen(
         runCatching {
             val res = container.api.getWarehouseLocation(locationId)
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-            val row = envelopeObject(res) ?: error("Empty location")
+            val row = envelopeObject(res) ?: error(context.getString(R.string.error_empty_location))
             warehouseId = row.long("warehouse_id") ?: defaultWh ?: warehouseId
             zoneCode = row.string("zone_code") ?: ""
             zoneName = row.string("zone_name") ?: ""
@@ -605,7 +670,6 @@ private fun LocationFormScreen(
             locationType = row.string("location_type") ?: "storage"
             capacity = row.double("capacity")?.let { DisplayFormat.qty(it) } ?: ""
             isActive = row.boolean("is_active") != false
-            selectedType = LOCATION_TYPES.find { it.first == locationType } ?: LOCATION_TYPES.first()
             selectedWarehouse = warehouseOptions.firstOrNull { it.id == warehouseId }
         }.onFailure { message = it.message }
         formLoading = false
@@ -625,12 +689,14 @@ private fun LocationFormScreen(
     )
 
     ErpScaffold(
-        title = if (locationId == null) "New location" else "Edit location",
+        title = stringResource(
+            if (locationId == null) R.string.inventory_location_new_title else R.string.inventory_location_edit_title,
+        ),
         onBack = onBack,
         actions = {
             if (locationId != null) {
                 IconButton(onClick = { confirmDelete = true }) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_delete))
                 }
             }
         },
@@ -641,30 +707,32 @@ private fun LocationFormScreen(
         } else {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SearchablePickerField(
-                label = "Warehouse",
+                label = stringResource(R.string.label_warehouse),
                 selected = selectedWarehouse,
-                placeholder = "Choose warehouse",
+                placeholder = stringResource(R.string.placeholder_choose_warehouse),
                 onOpen = { warehousePickerOpen = true },
             )
-            OutlinedTextField(zoneCode, { zoneCode = it }, label = { Text("Zone code") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(zoneName, { zoneName = it }, label = { Text("Zone name") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(aisle, { aisle = it }, label = { Text("Aisle") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(rack, { rack = it }, label = { Text("Rack") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(shelf, { shelf = it }, label = { Text("Shelf") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(bin, { bin = it }, label = { Text("Bin") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(zoneCode, { zoneCode = it }, label = { Text(stringResource(R.string.label_zone_code)) }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(zoneName, { zoneName = it }, label = { Text(stringResource(R.string.label_zone_name)) }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(aisle, { aisle = it }, label = { Text(stringResource(R.string.label_aisle)) }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(rack, { rack = it }, label = { Text(stringResource(R.string.label_rack)) }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(shelf, { shelf = it }, label = { Text(stringResource(R.string.label_shelf)) }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(bin, { bin = it }, label = { Text(stringResource(R.string.label_bin)) }, modifier = Modifier.fillMaxWidth())
             SearchablePickerField(
-                label = "Location type",
-                selected = PickerOption(0, selectedType.second),
-                placeholder = "Type",
+                label = stringResource(R.string.label_location_type),
+                selected = PickerOption(0, UiStrings.locationType(locationType)),
+                placeholder = stringResource(R.string.placeholder_type),
                 onOpen = { typePickerOpen = true },
             )
-            OutlinedTextField(capacity, { capacity = it }, label = { Text("Capacity") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(capacity, { capacity = it }, label = { Text(stringResource(R.string.label_capacity)) }, modifier = Modifier.fillMaxWidth())
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Active")
+                Text(stringResource(R.string.label_active))
                 Switch(isActive, { isActive = it })
             }
             ErpPrimaryButton(
-                text = if (locationId == null) "Create location" else "Save changes",
+                text = stringResource(
+                    if (locationId == null) R.string.inventory_location_create else R.string.action_save_changes,
+                ),
                 loading = loading,
                 onClick = {
                     scope.launchWorkflow({ loading = it }, { message = it }) {
@@ -687,7 +755,7 @@ private fun LocationFormScreen(
     if (warehousePickerOpen) {
         SearchablePickerSheet(
             visible = true,
-            title = "Warehouse",
+            title = stringResource(R.string.label_warehouse),
             options = warehouseOptions,
             onDismiss = { warehousePickerOpen = false },
             onSelect = {
@@ -700,13 +768,13 @@ private fun LocationFormScreen(
     if (typePickerOpen) {
         SearchablePickerSheet(
             visible = true,
-            title = "Location type",
-            options = LOCATION_TYPES.map { (code, label) -> PickerOption(code.hashCode().toLong(), label, code) },
+            title = stringResource(R.string.label_location_type),
+            options = LOCATION_TYPE_CODES.map { code ->
+                PickerOption(code.hashCode().toLong(), UiStrings.locationType(code), code)
+            },
             onDismiss = { typePickerOpen = false },
             onSelect = { option ->
-                val match = LOCATION_TYPES.find { pair -> pair.second == option.title } ?: LOCATION_TYPES.first()
-                selectedType = match
-                locationType = match.first
+                locationType = LOCATION_TYPE_CODES.find { it == option.subtitle } ?: LOCATION_TYPE_CODES.first()
                 typePickerOpen = false
             },
         )
@@ -715,8 +783,8 @@ private fun LocationFormScreen(
     if (confirmDelete && locationId != null) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete location?") },
-            text = { Text("Locations with stock movements cannot be deleted.") },
+            title = { Text(stringResource(R.string.inventory_location_delete_title)) },
+            text = { Text(stringResource(R.string.inventory_location_delete_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
@@ -726,9 +794,9 @@ private fun LocationFormScreen(
                         onSaved()
                         null
                     }
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.action_delete)) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
 }
@@ -755,7 +823,10 @@ private fun StockLocationPickerScreen(
         if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
         envelopePage(res, page)
     }
-    val sortLabels = listOf("Location", "Zone name")
+    val sortLabels = listOf(
+        stringResource(R.string.label_location),
+        stringResource(R.string.label_zone_name),
+    )
     val visibleRows = remember(liveList.rows, sortSearch.searchQuery, sortSearch.sortColumnIndex, sortSearch.sortDirection) {
         liveList.rows.applyCardListSortSearch(
             sortSearch,
@@ -766,14 +837,18 @@ private fun StockLocationPickerScreen(
         )
     }
 
-    ErpScaffold(title = "Stock by location", subtitle = "Pick a bin to view stock", onBack = onBack) {
+    ErpScaffold(
+        title = stringResource(R.string.inventory_stock_picker_title),
+        subtitle = stringResource(R.string.inventory_stock_picker_subtitle),
+        onBack = onBack,
+    ) {
         liveList.error?.let { StatusBanner(it, isError = true) }
         LiveSyncIndicator(liveList.lastUpdatedMs)
         SortableCardListToolbar(
             itemCount = visibleRows.size,
             sortSearch = sortSearch,
             sortLabels = sortLabels,
-            searchPlaceholder = "Search locations…",
+            searchPlaceholder = stringResource(R.string.search_locations_hint),
         )
         Column(
             Modifier
@@ -789,7 +864,10 @@ private fun StockLocationPickerScreen(
             }
             when {
                 liveList.loading && visibleRows.isEmpty() -> WorkflowListCardSkeleton(5)
-                visibleRows.isEmpty() -> Text("No bin locations found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                visibleRows.isEmpty() -> Text(
+                    stringResource(R.string.inventory_stock_no_bins),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 else -> visibleRows.forEach { row ->
                     val id = row.long("id") ?: return@forEach
                     WarehouseLocationPickerCard(location = row, onClick = { onOpen(id) })
@@ -807,11 +885,14 @@ private fun LocationStockScreen(
     onBack: () -> Unit,
     onStockAction: (StockLinePreset, String) -> Unit,
 ) {
+    val context = LocalContext.current
     val canAdjust = permissions.stockAdjustment.create
     val canRelocate = permissions.stockRelocation.create
     val isUnmarked = locationId == UNMARKED_STOCK_LOCATION_ID
-    var locationLabel by remember(locationId) {
-        mutableStateOf(if (isUnmarked) "Unmarked location" else "Location")
+    val unmarkedLabel = stringResource(R.string.label_unmarked_location)
+    val defaultLocationLabel = stringResource(R.string.label_location)
+    var locationLabel by remember(locationId, unmarkedLabel, defaultLocationLabel) {
+        mutableStateOf(if (isUnmarked) unmarkedLabel else defaultLocationLabel)
     }
     val sortSearch = rememberTableSortSearch()
     val liveList = rememberWorkflowLiveList(enabled = true) { page ->
@@ -825,7 +906,7 @@ private fun LocationStockScreen(
         }
         val res = if (isUnmarked) {
             val whId = container.workspaceContext().warehouseId
-                ?: error("No warehouse selected in workspace")
+                ?: error(context.getString(R.string.error_no_warehouse_in_workspace))
             container.api.listUnlocatedStocks(whId, page = page, perPage = 200)
         } else {
             container.api.listLocationStocks(locationId, page = page, perPage = 200)
@@ -833,7 +914,13 @@ private fun LocationStockScreen(
         if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
         envelopePage(res, page)
     }
-    val sortLabels = listOf("Product", "SKU", "Variation", "On hand", "Roll #")
+    val sortLabels = listOf(
+        stringResource(R.string.label_product),
+        stringResource(R.string.label_sku),
+        stringResource(R.string.label_variation),
+        stringResource(R.string.label_on_hand),
+        stringResource(R.string.label_roll_number_short),
+    )
     val visibleRows = remember(liveList.rows, sortSearch.searchQuery, sortSearch.sortColumnIndex, sortSearch.sortDirection) {
         liveList.rows.applyCardListSortSearch(
             sortSearch,
@@ -862,14 +949,18 @@ private fun LocationStockScreen(
         onStockAction(preset, flow)
     }
 
-    ErpScaffold(title = locationLabel, subtitle = "On-hand stock", onBack = onBack) {
+    ErpScaffold(
+        title = locationLabel,
+        subtitle = stringResource(R.string.inventory_on_hand_subtitle),
+        onBack = onBack,
+    ) {
         liveList.error?.let { StatusBanner(it, isError = true) }
         LiveSyncIndicator(liveList.lastUpdatedMs)
         SortableCardListToolbar(
             itemCount = visibleRows.size,
             sortSearch = sortSearch,
             sortLabels = sortLabels,
-            searchPlaceholder = "Search product, SKU, variation, roll…",
+            searchPlaceholder = stringResource(R.string.search_stock_hint),
         )
         Column(
             Modifier
@@ -880,7 +971,9 @@ private fun LocationStockScreen(
             when {
                 liveList.loading && visibleRows.isEmpty() -> WorkflowListCardSkeleton(5)
                 visibleRows.isEmpty() -> Text(
-                    if (isUnmarked) "No unlocated stock in this warehouse." else "No stock at this location.",
+                    stringResource(
+                        if (isUnmarked) R.string.inventory_unmarked_empty else R.string.inventory_location_empty,
+                    ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 else -> visibleRows.forEach { row ->
@@ -899,7 +992,7 @@ private fun LocationStockScreen(
     LocationStockDetailSheet(
         visible = detailOpen,
         stock = selectedStock,
-        locationLabel = if (isUnmarked) "Unmarked location" else locationLabel,
+        locationLabel = if (isUnmarked) unmarkedLabel else locationLabel,
         canAdjust = canAdjust,
         canRelocate = canRelocate,
         onDismiss = {
@@ -929,6 +1022,7 @@ private fun AdjustmentListScreen(
     onCreate: () -> Unit,
     onOpen: (Long) -> Unit,
 ) {
+    val emDash = stringResource(R.string.symbol_em_dash)
     val whId = container.workspaceContext().warehouseId
     val sortSearch = rememberTableSortSearch()
     val liveList = rememberWorkflowLiveList(enabled = true) { page ->
@@ -936,7 +1030,12 @@ private fun AdjustmentListScreen(
         if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
         envelopePage(res, page)
     }
-    val sortLabels = listOf("Number", "Status", "Type", "Date")
+    val sortLabels = listOf(
+        stringResource(R.string.col_number),
+        stringResource(R.string.label_status),
+        stringResource(R.string.label_type),
+        stringResource(R.string.label_date),
+    )
     val visibleRows = remember(liveList.rows, sortSearch.searchQuery, sortSearch.sortColumnIndex, sortSearch.sortDirection) {
         liveList.rows.applyCardListSortSearch(
             sortSearch,
@@ -950,13 +1049,13 @@ private fun AdjustmentListScreen(
     }
 
     ErpScaffold(
-        title = "Adjustments",
-        subtitle = "Pending & recent",
+        title = stringResource(R.string.inventory_adjustments_title),
+        subtitle = stringResource(R.string.inventory_adjustments_subtitle),
         onBack = onBack,
         actions = {
             if (canCreate) {
                 IconButton(onClick = onCreate) {
-                    Icon(Icons.Default.Add, contentDescription = "New adjustment")
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_new_adjustment))
                 }
             }
         },
@@ -967,19 +1066,22 @@ private fun AdjustmentListScreen(
             itemCount = visibleRows.size,
             sortSearch = sortSearch,
             sortLabels = sortLabels,
-            searchPlaceholder = "Search adjustments…",
+            searchPlaceholder = stringResource(R.string.search_adjustments_hint),
         )
         when {
             liveList.loading && visibleRows.isEmpty() -> WorkflowListCardSkeleton(5)
-            visibleRows.isEmpty() -> Text("No adjustments yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            visibleRows.isEmpty() -> Text(
+                stringResource(R.string.inventory_adjustments_empty),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             else -> visibleRows.forEach { row ->
             val id = row.long("id") ?: return@forEach
             ErpCard(onClick = { onOpen(id) }) {
-                Text(row.string("stock_adjustment_number") ?: "—", fontWeight = FontWeight.SemiBold)
+                Text(row.string("stock_adjustment_number") ?: emDash, fontWeight = FontWeight.SemiBold)
                 Text(
                     listOfNotNull(
-                        DisplayFormat.status(row.string("status")),
-                        DisplayFormat.status(row.string("adjustment_type")),
+                        UiStrings.apiStatus(row.string("status")),
+                        UiStrings.adjustmentType(row.string("adjustment_type")),
                         row.string("adjustment_date"),
                     ).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
@@ -997,14 +1099,16 @@ private fun AdjustmentFormScreen(
     onBack: () -> Unit,
     onSaved: () -> Unit,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val whId = container.workspaceContext().warehouseId
     if (whId == null) {
-        ErpScaffold(title = "New adjustment", onBack = onBack) {
-            StatusBanner("Select a workspace warehouse first.", isError = true)
+        ErpScaffold(title = stringResource(R.string.new_adjustment_title), onBack = onBack) {
+            StatusBanner(stringResource(R.string.inventory_workspace_required), isError = true)
         }
         return
     }
+    val defaultReason = stringResource(R.string.inventory_adjustment_default_reason)
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
@@ -1012,8 +1116,8 @@ private fun AdjustmentFormScreen(
     var selectedVariation by remember { mutableStateOf<PickerOption?>(null) }
     var variationOptions by remember { mutableStateOf<List<PickerOption>>(emptyList()) }
     var selectedLocation by remember { mutableStateOf<PickerOption?>(null) }
-    var selectedType by remember { mutableStateOf(ADJUSTMENT_TYPES.first()) }
-    var reason by remember { mutableStateOf("Mobile stock correction") }
+    var adjustmentTypeCode by remember { mutableStateOf(ADJUSTMENT_TYPE_CODES.first()) }
+    var reason by remember { mutableStateOf(defaultReason) }
     var notes by remember { mutableStateOf("") }
     var batchNumber by remember { mutableStateOf(preset.batchNumber ?: "") }
     var rollNumber by remember { mutableStateOf(preset.rollNumber ?: "") }
@@ -1030,12 +1134,21 @@ private fun AdjustmentFormScreen(
     var locationOptions by remember { mutableStateOf<List<PickerOption>>(emptyList()) }
 
     val requiresVariation = variationOptions.isNotEmpty()
-    val qtyLabel = if (isRollProduct) rollLengthLabel(quantityUnitSuffix) else "Current qty"
+    val lengthLabelPrefix = stringResource(R.string.label_length)
+    val qtyLabel = if (isRollProduct) {
+        rollLengthLabel(quantityUnitSuffix, lengthLabelPrefix)
+    } else {
+        stringResource(R.string.label_current_qty)
+    }
     val newQtyLabel = if (isRollProduct) {
         val suffix = quantityUnitSuffix?.takeIf { it.isNotBlank() }
-        if (suffix != null) "New length ($suffix)" else "New length"
+        if (suffix != null) {
+            stringResource(R.string.label_new_length_with_unit, suffix)
+        } else {
+            stringResource(R.string.label_new_length)
+        }
     } else {
-        "New qty (target)"
+        stringResource(R.string.label_new_qty_target)
     }
 
     suspend fun fetchStockForProduct(productId: Long) {
@@ -1051,7 +1164,7 @@ private fun AdjustmentFormScreen(
         val body = res.body()?.asJsonObject
         if (body?.boolean("requires_variation") == true) {
             currentQty = ""
-            message = "Select a variation to load stock."
+            message = context.getString(R.string.error_select_variation_for_stock)
             return
         }
         isRollProduct = body?.boolean("is_roll") == true || isRollProduct
@@ -1067,7 +1180,7 @@ private fun AdjustmentFormScreen(
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
             val body = res.body()?.asJsonObject
             isRollProduct = body?.string("product_type") == "roll"
-            val options = parseVariationPickerOptions(body?.getAsJsonArray("variations"))
+            val options = parseVariationPickerOptions(body?.getAsJsonArray("variations"), context)
             variationOptions = options
             selectedVariation = preselectVariationId?.let { id -> options.firstOrNull { it.id == id } }
             if (options.isEmpty()) {
@@ -1086,7 +1199,7 @@ private fun AdjustmentFormScreen(
         val productId = selectedProduct?.id ?: return
         if (variationOptions.isNotEmpty() && selectedVariation == null) {
             currentQty = ""
-            message = "Select a variation to load stock."
+            message = context.getString(R.string.error_select_variation_for_stock)
             return
         }
         scope.launchWorkflow({ loading = it }, { message = it }) {
@@ -1099,7 +1212,7 @@ private fun AdjustmentFormScreen(
         if (preset.productId != null) {
             selectedProduct = PickerOption(
                 preset.productId,
-                preset.productLabel ?: "Product #${preset.productId}",
+                preset.productLabel ?: context.getString(R.string.product_fallback_title, preset.productId),
             )
             preset.variationLabel?.let { label ->
                 preset.variationValueId?.let { id ->
@@ -1114,7 +1227,10 @@ private fun AdjustmentFormScreen(
                 locationOptions = envelopeList(locRes).mapNotNull(PickerMappers::warehouseLocation)
                 preset.locationId?.let { locId ->
                     selectedLocation = if (locId == UNMARKED_STOCK_LOCATION_ID) {
-                        PickerOption(UNMARKED_STOCK_LOCATION_ID, "Unmarked location")
+                        PickerOption(
+                            UNMARKED_STOCK_LOCATION_ID,
+                            context.getString(R.string.label_unmarked_location),
+                        )
                     } else {
                         locationOptions.firstOrNull { it.id == locId }
                     }
@@ -1126,20 +1242,20 @@ private fun AdjustmentFormScreen(
         }
     }
 
-    ErpScaffold(title = "New adjustment", onBack = onBack) {
+    ErpScaffold(title = stringResource(R.string.new_adjustment_title), onBack = onBack) {
         message?.let { StatusBanner(it, isError = true) }
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SearchablePickerField(
-                label = "Product",
+                label = stringResource(R.string.label_product),
                 selected = selectedProduct,
-                placeholder = "Choose product",
+                placeholder = stringResource(R.string.placeholder_choose_product),
                 onOpen = { productPickerOpen = true },
             )
             if (selectedProduct != null && requiresVariation) {
                 SearchablePickerField(
-                    label = "Variation",
+                    label = stringResource(R.string.label_variation),
                     selected = selectedVariation,
-                    placeholder = "Choose variation",
+                    placeholder = stringResource(R.string.placeholder_choose_variation),
                     onOpen = { variationPickerOpen = true },
                     onClear = {
                         selectedVariation = null
@@ -1148,9 +1264,9 @@ private fun AdjustmentFormScreen(
                 )
             }
             SearchablePickerField(
-                label = "Location",
+                label = stringResource(R.string.label_location),
                 selected = selectedLocation,
-                placeholder = "Optional location",
+                placeholder = stringResource(R.string.placeholder_optional_location),
                 onOpen = { locationPickerOpen = true },
                 onClear = {
                     selectedLocation = null
@@ -1158,18 +1274,18 @@ private fun AdjustmentFormScreen(
                 },
             )
             SearchablePickerField(
-                label = "Adjustment type",
-                selected = PickerOption(0, selectedType.second),
-                placeholder = "Type",
+                label = stringResource(R.string.label_adjustment_type),
+                selected = PickerOption(0, UiStrings.adjustmentType(adjustmentTypeCode)),
+                placeholder = stringResource(R.string.placeholder_type),
                 onOpen = { typePickerOpen = true },
             )
-            OutlinedTextField(reason, { reason = it }, label = { Text("Reason") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(reason, { reason = it }, label = { Text(stringResource(R.string.label_reason)) }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(notes, { notes = it }, label = { Text(stringResource(R.string.label_notes)) }, modifier = Modifier.fillMaxWidth())
             if (isRollProduct) {
                 OutlinedTextField(
                     rollNumber,
                     { rollNumber = it },
-                    label = { Text("Roll number") },
+                    label = { Text(stringResource(R.string.label_roll_number)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
@@ -1177,7 +1293,7 @@ private fun AdjustmentFormScreen(
                 OutlinedTextField(
                     batchNumber,
                     { batchNumber = it },
-                    label = { Text("Batch") },
+                    label = { Text(stringResource(R.string.label_batch)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
@@ -1191,36 +1307,42 @@ private fun AdjustmentFormScreen(
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = { refreshCurrentQty() }) {
-                    Text(if (isRollProduct) "Refresh length" else "Refresh qty")
+                    Text(
+                        stringResource(
+                            if (isRollProduct) R.string.action_refresh_length else R.string.action_refresh_qty,
+                        ),
+                    )
                 }
             }
             OutlinedTextField(newQty, { newQty = it }, label = { Text(newQtyLabel) }, modifier = Modifier.fillMaxWidth())
             ErpPrimaryButton(
-                text = "Submit adjustment",
+                text = stringResource(R.string.inventory_adjustment_submit),
                 loading = loading,
                 enabled = selectedProduct != null && newQty.isNotBlank(),
                 onClick = {
                     val productId = selectedProduct?.id ?: return@ErpPrimaryButton
                     if (requiresVariation && selectedVariation == null) {
-                        message = "Select a variation for this product."
+                        message = context.getString(R.string.error_select_variation_for_product)
                         return@ErpPrimaryButton
                     }
                     if (isRollProduct && rollNumber.isBlank()) {
-                        message = "Enter the roll number for this roll product."
+                        message = context.getString(R.string.error_enter_roll_number)
                         return@ErpPrimaryButton
                     }
                     val current = currentQty.toDoubleOrNull() ?: 0.0
                     val target = newQty.toDoubleOrNull() ?: return@ErpPrimaryButton
                     val delta = target - current
                     if (delta == 0.0) {
-                        message = if (isRollProduct) "New length must differ from current." else "New quantity must differ from current."
+                        message = context.getString(
+                            if (isRollProduct) R.string.error_new_length_must_differ else R.string.error_new_qty_must_differ,
+                        )
                         return@ErpPrimaryButton
                     }
                     scope.launchWorkflow({ loading = it }, { message = it }) {
                         val body = CreateStockAdjustmentRequest(
                             adjustment_date = LocalDate.now().toString(),
                             warehouse_id = whId,
-                            adjustment_type = selectedType.first,
+                            adjustment_type = adjustmentTypeCode,
                             reason = reason.trim(),
                             notes = notes.ifBlank { null },
                             product_id = productId,
@@ -1238,7 +1360,10 @@ private fun AdjustmentFormScreen(
                         if (createdId != null) {
                             val approveRes = container.api.approveStockAdjustment(createdId)
                             if (!approveRes.isSuccessful) {
-                                message = "Created pending approval: ${ApiErrorParser.httpMessage(approveRes)}"
+                                message = context.getString(
+                                    R.string.inventory_created_pending_approval,
+                                    ApiErrorParser.httpMessage(approveRes),
+                                )
                                 onSaved()
                                 return@launchWorkflow null
                             }
@@ -1254,7 +1379,7 @@ private fun AdjustmentFormScreen(
     if (productPickerOpen) {
         SearchablePickerSheet(
             visible = true,
-            title = "Product",
+            title = stringResource(R.string.label_product),
             options = productOptions,
             onDismiss = { productPickerOpen = false },
             onSearch = { query ->
@@ -1279,7 +1404,7 @@ private fun AdjustmentFormScreen(
     if (variationPickerOpen) {
         SearchablePickerSheet(
             visible = true,
-            title = "Variation",
+            title = stringResource(R.string.label_variation),
             options = variationOptions,
             onDismiss = { variationPickerOpen = false },
             onSelect = {
@@ -1287,13 +1412,13 @@ private fun AdjustmentFormScreen(
                 variationPickerOpen = false
                 refreshCurrentQty()
             },
-            searchHint = "Filter variations…",
+            searchHint = stringResource(R.string.filter_variations_hint),
         )
     }
     if (locationPickerOpen) {
         SearchablePickerSheet(
             visible = true,
-            title = "Location",
+            title = stringResource(R.string.label_location),
             options = locationOptions,
             onDismiss = { locationPickerOpen = false },
             onSelect = {
@@ -1306,18 +1431,20 @@ private fun AdjustmentFormScreen(
     if (typePickerOpen) {
         SearchablePickerSheet(
             visible = true,
-            title = "Adjustment type",
-            options = ADJUSTMENT_TYPES.map { (code, label) -> PickerOption(code.hashCode().toLong(), label) },
+            title = stringResource(R.string.label_adjustment_type),
+            options = ADJUSTMENT_TYPE_CODES.map { code ->
+                PickerOption(code.hashCode().toLong(), UiStrings.adjustmentType(code), code)
+            },
             onDismiss = { typePickerOpen = false },
             onSelect = { option ->
-                selectedType = ADJUSTMENT_TYPES.find { it.second == option.title } ?: ADJUSTMENT_TYPES.first()
+                adjustmentTypeCode = ADJUSTMENT_TYPE_CODES.find { it == option.subtitle } ?: ADJUSTMENT_TYPE_CODES.first()
                 typePickerOpen = false
             },
         )
     }
 }
 
-private fun parseVariationPickerOptions(variations: JsonArray?): List<PickerOption> =
+private fun parseVariationPickerOptions(variations: JsonArray?, context: Context): List<PickerOption> =
     variations?.mapNotNull { el ->
         val v = el.asJsonObject
         val id = v.long("id") ?: return@mapNotNull null
@@ -1330,7 +1457,9 @@ private fun parseVariationPickerOptions(variations: JsonArray?): List<PickerOpti
             if (!name.isNullOrBlank() && !value.isNullOrBlank()) "$name: $value" else null
         }?.joinToString(" · ")
         val main = v.string("value") ?: v.string("display_label")
-        val title = listOfNotNull(main, attrText).joinToString(" — ").ifBlank { "Variation #$id" }
+        val title = listOfNotNull(main, attrText).joinToString(" — ").ifBlank {
+            context.getString(R.string.variation_fallback_title, id)
+        }
         PickerOption(id, title, attrText)
     } ?: emptyList()
 
@@ -1342,6 +1471,7 @@ private fun AdjustmentDetailScreen(
     onChanged: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val emDash = stringResource(R.string.symbol_em_dash)
     var actionLoading by remember { mutableStateOf(false) }
     var detailLoading by remember { mutableStateOf(true) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -1359,19 +1489,20 @@ private fun AdjustmentDetailScreen(
     }
 
     val status = adjustment?.string("status")
-    val number = adjustment?.string("stock_adjustment_number") ?: "Adjustment"
+    val number = adjustment?.string("stock_adjustment_number")
+        ?: stringResource(R.string.inventory_adjustment_fallback_title)
     val item = adjustment?.let { nestedItems(it, "items").firstOrNull() }
 
-    ErpScaffold(title = number, subtitle = DisplayFormat.status(status), onBack = onBack) {
-        message?.let { StatusBanner(it, isError = it.contains("Error", true) || it.contains("Failed", true)) }
+    ErpScaffold(title = number, subtitle = UiStrings.apiStatus(status), onBack = onBack) {
+        message?.let { StatusBanner(it, isError = StatusMessage.looksLikeError(it)) }
         if (detailLoading) {
             AdjustmentDetailSkeleton()
         } else {
         adjustment?.let { adj ->
             ErpCard {
-                Text("Type: ${DisplayFormat.status(adj.string("adjustment_type"))}")
-                Text("Reason: ${adj.string("reason") ?: "—"}")
-                Text("Date: ${adj.string("adjustment_date") ?: "—"}")
+                Text(stringResource(R.string.label_type_value, UiStrings.adjustmentType(adj.string("adjustment_type"))))
+                Text(stringResource(R.string.label_reason_value, adj.string("reason") ?: emDash))
+                Text(stringResource(R.string.label_date_value, adj.string("adjustment_date") ?: emDash))
             }
         }
         item?.let { line ->
@@ -1384,7 +1515,10 @@ private fun AdjustmentDetailScreen(
                 }
                 line.string("batch_number")?.takeIf { it.isNotBlank() }?.let { ref ->
                     Text(
-                        if (isRollLine) "Roll $ref" else "Batch $ref",
+                        stringResource(
+                            if (isRollLine) R.string.label_roll_value else R.string.label_batch_value,
+                            ref,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -1396,7 +1530,10 @@ private fun AdjustmentDetailScreen(
                     DisplayFormat.qty(delta ?: 0.0)
                 }
                 Text(
-                    if (isRollLine) "Length change: $deltaLabel" else "Qty change: $deltaLabel",
+                    stringResource(
+                        if (isRollLine) R.string.inventory_length_change else R.string.inventory_qty_change,
+                        deltaLabel,
+                    ),
                     fontWeight = FontWeight.Medium,
                 )
             }
@@ -1404,7 +1541,7 @@ private fun AdjustmentDetailScreen(
         if (status == "pending") {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ErpPrimaryButton(
-                    text = "Approve",
+                    text = stringResource(R.string.action_approve),
                     loading = actionLoading,
                     modifier = Modifier.weight(1f),
                     onClick = {
@@ -1417,7 +1554,7 @@ private fun AdjustmentDetailScreen(
                     },
                 )
                 ErpPrimaryButton(
-                    text = "Reject",
+                    text = stringResource(R.string.action_reject),
                     loading = actionLoading,
                     modifier = Modifier.weight(1f),
                     onClick = {
@@ -1431,7 +1568,7 @@ private fun AdjustmentDetailScreen(
                 )
             }
             ErpPrimaryButton(
-                text = "Delete",
+                text = stringResource(R.string.action_delete),
                 loading = actionLoading,
                 onClick = {
                     scope.launchWorkflow({ actionLoading = it }, { message = it }) {

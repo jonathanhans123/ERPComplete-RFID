@@ -16,9 +16,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.rfid.FirmwareUpdateState
+import com.erpcomplete.rfid.ui.util.UiStrings
 
 @Composable
 fun FirmwareUpdateMeter(
@@ -45,19 +48,18 @@ fun FirmwareUpdateMeter(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "0%",
+                stringResource(R.string.firmware_progress_min),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                if (active) "${state.progressPercent}%" else state.phase.name.replace('_', ' ').lowercase()
-                    .replaceFirstChar { it.titlecase() },
+                if (active) "${state.progressPercent}%" else UiStrings.firmwarePhaseLabel(state.phase.name),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = meterColor,
             )
             Text(
-                "100%",
+                stringResource(R.string.firmware_progress_max),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

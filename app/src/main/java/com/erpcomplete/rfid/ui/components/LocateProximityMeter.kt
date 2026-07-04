@@ -18,8 +18,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 
 @Composable
 fun LocateProximityMeter(
@@ -45,18 +47,18 @@ fun LocateProximityMeter(
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
         ) {
             Text(
-                "Far",
+                stringResource(R.string.locate_label_far),
                 style = MaterialTheme.typography.labelSmall,
                 color = Color(0xFFD32F2F),
             )
             Text(
-                if (isActive) "$level%" else "—",
+                if (isActive) "$level%" else stringResource(R.string.symbol_em_dash),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = if (isActive) meterColor else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                "Close",
+                stringResource(R.string.locate_label_close),
                 style = MaterialTheme.typography.labelSmall,
                 color = Color(0xFF2E7D32),
             )
@@ -90,11 +92,11 @@ fun LocateProximityMeter(
         Spacer(Modifier.height(6.dp))
         Text(
             when {
-                !isActive -> "Hold top trigger to search"
-                level >= 75 -> "Very close"
-                level >= 45 -> "Getting warmer"
-                level >= 15 -> "Weak signal — keep sweeping"
-                else -> "No signal — move and sweep"
+                !isActive -> stringResource(R.string.locate_hold_trigger_search)
+                level >= 75 -> stringResource(R.string.locate_very_close)
+                level >= 45 -> stringResource(R.string.locate_getting_warmer)
+                level >= 15 -> stringResource(R.string.locate_weak_signal)
+                else -> stringResource(R.string.locate_no_signal)
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

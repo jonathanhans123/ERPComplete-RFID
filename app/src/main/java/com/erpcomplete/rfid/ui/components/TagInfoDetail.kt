@@ -1,5 +1,6 @@
 package com.erpcomplete.rfid.ui.components
 
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,8 +13,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
+import com.erpcomplete.rfid.ui.util.UiStrings
 import com.erpcomplete.rfid.util.DisplayFormat
 
 @Suppress("UNCHECKED_CAST")
@@ -37,10 +42,10 @@ fun Map<String, Any?>.tagLocationUnassigned(): Boolean {
     return stock != null && warehouse != null && location == null
 }
 
-fun Map<String, Any?>.tagLocationLabel(): String? {
+fun Map<String, Any?>.tagLocationLabel(context: Context): String? {
     val location = tagInfoNestedMap("warehouse_location")
     location?.tagInfoString("name")?.let { return it }
-    if (tagLocationUnassigned()) return "Unmarked location"
+    if (tagLocationUnassigned()) return context.getString(R.string.label_unmarked_location)
     return null
 }
 
@@ -50,6 +55,7 @@ fun TagInfoDetailContent(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
 ) {
+    val context = LocalContext.current
     val product = info.tagInfoNestedMap("product")
     val variation = info.tagInfoNestedMap("variation")
     val stock = info.tagInfoNestedMap("stock")
@@ -57,43 +63,43 @@ fun TagInfoDetailContent(
     val location = info.tagInfoNestedMap("warehouse_location")
     val descriptors = info.tagInfoListOfMaps("variation_descriptors")
     val outputLabel = info.tagInfoNestedMap("output_label")
-    val locationLabel = info.tagLocationLabel()
+    val locationLabel = info.tagLocationLabel(context)
     val locationUnassigned = info.tagLocationUnassigned()
 
     Column(modifier) {
-        TagInfoDetailSection("Product", compact) {
-            TagInfoDetailLine("Name", product?.tagInfoString("name"))
-            TagInfoDetailLine("SKU", product?.tagInfoString("sku"))
+        TagInfoDetailSection(stringResource(R.string.tag_info_section_product), compact) {
+            TagInfoDetailLine(stringResource(R.string.label_name), product?.tagInfoString("name"))
+            TagInfoDetailLine(stringResource(R.string.label_sku), product?.tagInfoString("sku"))
         }
 
         if (variation != null || descriptors.isNotEmpty()) {
-            TagInfoDetailSection("Variation", compact) {
-                TagInfoDetailLine("Name", variation?.tagInfoString("name") ?: variation?.tagInfoString("value"))
-                TagInfoDetailLine("SKU", variation?.tagInfoString("sku"))
+            TagInfoDetailSection(stringResource(R.string.tag_info_section_variation), compact) {
+                TagInfoDetailLine(stringResource(R.string.label_name), variation?.tagInfoString("name") ?: variation?.tagInfoString("value"))
+                TagInfoDetailLine(stringResource(R.string.label_sku), variation?.tagInfoString("sku"))
                 descriptors.forEach { d ->
-                    TagInfoDetailLine(d.tagInfoString("name") ?: "Option", d.tagInfoString("value"))
+                    TagInfoDetailLine(d.tagInfoString("name") ?: stringResource(R.string.label_option), d.tagInfoString("value"))
                 }
             }
         }
 
         if (stock != null) {
-            TagInfoDetailSection("Stock", compact) {
+            TagInfoDetailSection(stringResource(R.string.tag_info_section_stock), compact) {
                 val isRoll = info.tagInfoString("product_type") == "roll"
                     || stock["is_roll_product"] == true
                     || !stock.tagInfoString("roll_number").isNullOrBlank()
                     || (stock["roll_length"]?.toString()?.toDoubleOrNull() ?: 0.0) > 0.0
                 if (isRoll) {
-                    TagInfoDetailLine("Roll #", stock.tagInfoString("roll_number"))
+                    TagInfoDetailLine(stringResource(R.string.label_roll_number_short), stock.tagInfoString("roll_number"))
                     val unit = info.tagInfoString("quantity_unit_suffix")
                     val rollLength = stock["roll_length"]?.toString()
                     TagInfoDetailLine(
-                        "On hand",
+                        stringResource(R.string.label_on_hand),
                         if (!rollLength.isNullOrBlank() && !unit.isNullOrBlank()) "$rollLength $unit" else rollLength,
                     )
                     val nominal = stock["quantity"]?.toString()
                     if (!nominal.isNullOrBlank()) {
                         TagInfoDetailLine(
-                            "Nominal",
+                            stringResource(R.string.label_nominal),
                             if (!unit.isNullOrBlank()) "$nominal $unit" else nominal,
                         )
                     }
@@ -104,42 +110,50 @@ fun TagInfoDetailContent(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                "Fill",
+                                stringResource(R.string.label_fill),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            StatusChip(DisplayFormat.status(fill))
+                            StatusChip(fill)
                         }
                     }
                 } else {
-                    TagInfoDetailLine("Quantity", stock["quantity"]?.toString())
+                    TagInfoDetailLine(stringResource(R.string.label_quantity), stock["quantity"]?.toString())
                 }
-                TagInfoDetailLine("Batch", stock.tagInfoString("batch_number"))
-                TagInfoDetailLine("Type", stock.tagInfoString("stock_type"))
+                TagInfoDetailLine(stringResource(R.string.label_batch), stock.tagInfoString("batch_number"))
+                stock.tagInfoString("stock_type")?.let { UiStrings.apiStatus(it) }?.let {
+                    TagInfoDetailLine(stringResource(R.string.label_type), it)
+                }
             }
         }
 
         if (warehouse != null || locationLabel != null) {
-            TagInfoDetailSection("Location", compact) {
-                TagInfoDetailLine("Warehouse", warehouse?.tagInfoString("name"))
-                TagInfoDetailLine("Location", locationLabel)
+            TagInfoDetailSection(stringResource(R.string.tag_info_section_location), compact) {
+                TagInfoDetailLine(stringResource(R.string.label_warehouse), warehouse?.tagInfoString("name"))
+                TagInfoDetailLine(stringResource(R.string.label_location), locationLabel)
                 if (!locationUnassigned) {
-                    TagInfoDetailLine("Location barcode", location?.tagInfoString("barcode"))
+                    TagInfoDetailLine(stringResource(R.string.label_location_barcode), location?.tagInfoString("barcode"))
                 }
             }
         }
 
         if (outputLabel != null) {
-            TagInfoDetailSection("Label", compact) {
-                TagInfoDetailLine("Barcode", outputLabel.tagInfoString("barcode_value"))
-                TagInfoDetailLine("Status", outputLabel.tagInfoString("status"))
+            TagInfoDetailSection(stringResource(R.string.tag_info_section_label), compact) {
+                TagInfoDetailLine(stringResource(R.string.label_barcode), outputLabel.tagInfoString("barcode_value"))
+                TagInfoDetailLine(
+                    stringResource(R.string.label_status),
+                    UiStrings.apiStatus(outputLabel.tagInfoString("status")),
+                )
             }
         }
 
         if (!compact) {
-            TagInfoDetailSection("Tag", compact) {
-                TagInfoDetailLine("EPC", info.tagInfoString("epc"))
-                TagInfoDetailLine("Status", info.tagInfoString("status"))
+            TagInfoDetailSection(stringResource(R.string.tag_info_section_tag), compact) {
+                TagInfoDetailLine(stringResource(R.string.label_epc), info.tagInfoString("epc"))
+                TagInfoDetailLine(
+                    stringResource(R.string.label_status),
+                    UiStrings.apiStatus(info.tagInfoString("status")),
+                )
             }
         }
     }

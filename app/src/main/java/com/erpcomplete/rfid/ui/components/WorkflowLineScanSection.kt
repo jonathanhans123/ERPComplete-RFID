@@ -38,9 +38,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.rfid.RfidManager
 import com.erpcomplete.rfid.util.DisplayFormat
@@ -129,6 +133,10 @@ fun WorkflowLineScanSection(
         forcedLineKeys.keys.toList().filter { it !in active }.forEach { forcedLineKeys.remove(it) }
     }
 
+    val scanTypeRfid = stringResource(R.string.scan_type_rfid)
+    val scanTypeBarcode = stringResource(R.string.scan_type_barcode)
+    val emptyTableText = stringResource(R.string.scan_table_empty_line_match)
+
     Column(modifier) {
         Row(
             Modifier.fillMaxWidth(),
@@ -137,7 +145,7 @@ fun WorkflowLineScanSection(
         ) {
             Column {
                 Text(
-                    "${tags.size} scan${if (tags.size == 1) "" else "s"}",
+                    pluralStringResource(R.plurals.scan_count, tags.size, tags.size),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -150,14 +158,14 @@ fun WorkflowLineScanSection(
                 }
                 if (unknown > 0) {
                     Text(
-                        "$unknown not in ERP — tap red row to map",
+                        stringResource(R.string.scan_unknown_erp_hint_map, unknown),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
                 if (unmatched > 0) {
                     Text(
-                        "$unmatched not on lines — tap yellow to add or remove",
+                        stringResource(R.string.scan_unmatched_lines_hint, unmatched),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.tertiary,
                     )
@@ -169,18 +177,21 @@ fun WorkflowLineScanSection(
                 autoIncremented.clear()
                 onLineHighlightsChanged(emptyMap())
             }, enabled = tags.isNotEmpty()) {
-                Icon(Icons.Default.ClearAll, contentDescription = null)
+                Icon(
+                    Icons.Default.ClearAll,
+                    contentDescription = stringResource(R.string.cd_clear),
+                )
                 Spacer(Modifier.padding(horizontal = 2.dp))
-                Text("Clear")
+                Text(stringResource(R.string.action_clear))
             }
         }
         Text(
-            "Top trigger = RFID · bottom trigger or field = barcode (same table)",
+            stringResource(R.string.scan_trigger_hint_dual),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            "Roll products: one tag per roll — scan confirms the roll; enter length manually.",
+            stringResource(R.string.scan_roll_products_hint),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -188,7 +199,7 @@ fun WorkflowLineScanSection(
         OutlinedTextField(
             value = barcodeInput,
             onValueChange = { barcodeInput = it },
-            label = { Text("Barcode") },
+            label = { Text(stringResource(R.string.label_barcode)) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -209,14 +220,14 @@ fun WorkflowLineScanSection(
                 val status = WorkflowLineMatcher.matchStatus(entry, lines, forcedLineKeys[code])
                 LineMatchScanRow(
                     code = tag.epc,
-                    typeLabel = if (tag.type == RfidManager.ScanType.BARCODE) "Barcode" else "RFID",
+                    typeLabel = if (tag.type == RfidManager.ScanType.BARCODE) scanTypeBarcode else scanTypeRfid,
                     entry = entry,
                     matchStatus = status,
                     matchedLineLabel = WorkflowLineMatcher.findMatchingLine(entry ?: ScanResolveEntry(ScanResolveStatus.PENDING), lines, forcedLineKeys[code])
                         ?.label,
                 )
             },
-            emptyText = "Scanned tags appear here — green = matched, yellow = wrong line, red = unknown.",
+            emptyText = emptyTableText,
             onUnknownClick = { registerCode = it },
             onUnmatchedClick = { unmatchedCode = it },
         )
@@ -238,7 +249,7 @@ fun WorkflowLineScanSection(
     if (unmatchedCode != null && unmatchedEntry != null) {
         AlertDialog(
             onDismissRequest = { unmatchedCode = null },
-            title = { Text("Product not on lines") },
+            title = { Text(stringResource(R.string.dialog_product_not_on_lines_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(unmatchedCode!!, style = MaterialTheme.typography.labelMedium)
@@ -246,12 +257,12 @@ fun WorkflowLineScanSection(
                         listOfNotNull(
                             unmatchedEntry.productName,
                             unmatchedEntry.variationLabel,
-                            unmatchedEntry.rollLabel?.let { "Roll $it" },
+                            unmatchedEntry.rollLabel?.let { stringResource(R.string.roll_label, it) },
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
-                        "Add this scan to a line anyway, or remove it from the session.",
+                        stringResource(R.string.dialog_product_not_on_lines_body),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -261,7 +272,7 @@ fun WorkflowLineScanSection(
                 TextButton(onClick = {
                     forceLinePickerFor = unmatchedCode
                     unmatchedCode = null
-                }) { Text("Add to line…") }
+                }) { Text(stringResource(R.string.action_add_to_line)) }
             },
             dismissButton = {
                 TextButton(onClick = {
@@ -269,7 +280,7 @@ fun WorkflowLineScanSection(
                     forcedLineKeys.remove(unmatchedCode!!.uppercase())
                     autoIncremented.remove(unmatchedCode!!.uppercase())
                     unmatchedCode = null
-                }) { Text("Remove scan") }
+                }) { Text(stringResource(R.string.action_remove_scan)) }
             },
         )
     }
@@ -277,7 +288,7 @@ fun WorkflowLineScanSection(
     if (forceLinePickerFor != null && lines.isNotEmpty()) {
         AlertDialog(
             onDismissRequest = { forceLinePickerFor = null },
-            title = { Text("Choose line") },
+            title = { Text(stringResource(R.string.dialog_choose_line_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     lines.forEach { line ->
@@ -290,14 +301,17 @@ fun WorkflowLineScanSection(
                             },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text(line.label.ifBlank { "Line ${line.key}" }, modifier = Modifier.fillMaxWidth())
+                            Text(
+                                line.label.ifBlank { stringResource(R.string.workflow_line_fallback, line.key) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
                         }
                     }
                 }
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { forceLinePickerFor = null }) { Text("Cancel") }
+                TextButton(onClick = { forceLinePickerFor = null }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
@@ -319,6 +333,12 @@ private fun LineMatchScanTable(
     onUnknownClick: (String) -> Unit,
     onUnmatchedClick: (String) -> Unit,
 ) {
+    val context = LocalContext.current
+    val pendingLabel = stringResource(R.string.symbol_ellipsis)
+    val notRegisteredMapLabel = stringResource(R.string.scan_status_not_registered_map)
+    val noMatchingLineLabel = stringResource(R.string.scan_status_no_matching_line)
+    val matchedLabel = stringResource(R.string.scan_status_matched)
+    val enterLengthLabel = stringResource(R.string.scan_enter_length_manually)
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
@@ -327,9 +347,9 @@ private fun LineMatchScanTable(
     ) {
         WorkflowTableHeader(
             listOf(
-                DataTableColumn("Code", 1.2f),
-                DataTableColumn("ERP / match", 1.1f),
-                DataTableColumn("Type", 0.4f),
+                DataTableColumn(stringResource(R.string.table_col_code), 1.2f),
+                DataTableColumn(stringResource(R.string.table_col_erp_match), 1.1f),
+                DataTableColumn(stringResource(R.string.table_col_type), 0.4f),
             ),
         )
         if (rows.isEmpty()) {
@@ -360,23 +380,29 @@ private fun LineMatchScanTable(
                         WorkflowTableCell(row.code, 1.2f, mono = true)
                         WorkflowTableCell(
                             when (row.matchStatus) {
-                                ScanMatchStatus.PENDING -> "…"
-                                ScanMatchStatus.UNKNOWN -> "Not registered — tap to map"
+                                ScanMatchStatus.PENDING -> pendingLabel
+                                ScanMatchStatus.UNKNOWN -> notRegisteredMapLabel
                                 ScanMatchStatus.UNMATCHED -> listOfNotNull(
                                     row.entry?.productName,
                                     row.entry?.variationLabel,
-                                ).joinToString(" · ").ifBlank { "No matching line" }
+                                ).joinToString(" · ").ifBlank { noMatchingLineLabel }
                                 ScanMatchStatus.MATCHED, ScanMatchStatus.FORCED -> buildString {
                                     append(
                                         listOfNotNull(
                                             row.entry?.productName,
                                             row.entry?.variationLabel,
-                                            row.entry?.rollLabel?.let { "Roll $it" },
-                                        ).joinToString(" · ").ifBlank { "Matched" },
+                                            row.entry?.rollLabel?.let { roll ->
+                                                context.getString(R.string.roll_label, roll)
+                                            },
+                                        ).joinToString(" · ").ifBlank { matchedLabel },
                                     )
-                                    row.matchedLineLabel?.let { append("\n→ ").append(it) }
+                                    row.matchedLineLabel?.let {
+                                        append("\n")
+                                        append(context.getString(R.string.scan_matched_line_arrow, it))
+                                    }
                                     if (row.entry?.isRoll == true) {
-                                        append("\nEnter length manually")
+                                        append("\n")
+                                        append(enterLengthLabel)
                                     }
                                 }
                             },

@@ -7,9 +7,12 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.content.Context
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.remote.ErpApiService
 import com.erpcomplete.rfid.data.remote.ResolveBulkRequest
 import com.erpcomplete.rfid.util.ApiErrorParser
+import com.erpcomplete.rfid.util.StatusMessage
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
@@ -77,7 +80,7 @@ fun rememberScanResolver(
             }
         }.onFailure {
             // Keep PENDING on transient errors; only mark unknown when response was parsed empty
-            if (it.message?.contains("offline", ignoreCase = true) != true) {
+            if (!StatusMessage.isOfflineSyncMessage(it.message)) {
                 normalized.forEach { code ->
                     if (entries[code]?.status == ScanResolveStatus.PENDING) {
                         entries[code] = ScanResolveEntry(ScanResolveStatus.UNKNOWN)
@@ -170,9 +173,9 @@ fun scanResolveEntryFromTagInfo(obj: JsonObject): ScanResolveEntry {
     return entryFromResolveInfo(map)
 }
 
-fun scanResolveLabel(entry: ScanResolveEntry?): String = when (entry?.status) {
-    ScanResolveStatus.PENDING -> "…"
-    ScanResolveStatus.UNKNOWN -> "Not registered"
+fun scanResolveLabel(context: Context, entry: ScanResolveEntry?): String = when (entry?.status) {
+    ScanResolveStatus.PENDING -> context.getString(R.string.symbol_ellipsis)
+    ScanResolveStatus.UNKNOWN -> context.getString(R.string.scan_status_not_registered)
     ScanResolveStatus.REGISTERED -> buildString {
         entry.productName?.let { append(it) }
         entry.variationLabel?.takeIf { it.isNotBlank() }?.let {
@@ -181,14 +184,14 @@ fun scanResolveLabel(entry: ScanResolveEntry?): String = when (entry?.status) {
         }
         entry.rollLabel?.takeIf { it.isNotBlank() }?.let {
             if (isNotEmpty()) append(" · ")
-            append("roll ").append(it)
+            append(context.getString(R.string.scan_resolve_roll_prefix, it))
         }
         if (entry.isRoll && entry.rollLabel.isNullOrBlank()) {
             if (isNotEmpty()) append(" · ")
-            append("(roll)")
+            append(context.getString(R.string.scan_resolve_roll_marker))
         }
-    }.ifBlank { "Linked" }
-    null -> "…"
+    }.ifBlank { context.getString(R.string.scan_status_linked) }
+    null -> context.getString(R.string.symbol_ellipsis)
 }
 
 private const val RESOLVE_CHUNK_SIZE = 100

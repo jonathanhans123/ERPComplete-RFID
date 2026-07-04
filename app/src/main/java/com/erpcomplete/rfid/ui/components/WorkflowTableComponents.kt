@@ -35,6 +35,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.rfid.RfidManager
 import com.erpcomplete.rfid.util.DisplayFormat
 
@@ -129,7 +133,8 @@ private fun RenderTableCellContent(cell: TableCell) {
 
 @Composable
 fun StatusChip(raw: String?, modifier: Modifier = Modifier) {
-    val label = DisplayFormat.status(raw)
+    val context = LocalContext.current
+    val label = DisplayFormat.status(context, raw)
     val (bg, fg) = statusColors(raw)
     Box(
         modifier
@@ -407,26 +412,29 @@ fun WorkflowScanPanel(
         ) {
             Column {
                 Text(
-                    "${tags.size} scan${if (tags.size == 1) "" else "s"}",
+                    pluralStringResource(R.plurals.scan_count, tags.size, tags.size),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
                 if (unknownCount > 0) {
                     Text(
-                        "$unknownCount not in ERP — tap red row to register",
+                        stringResource(R.string.scan_unknown_erp_hint_register, unknownCount),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
             }
             TextButton(onClick = onClear, enabled = tags.isNotEmpty()) {
-                androidx.compose.material3.Icon(Icons.Default.ClearAll, contentDescription = null)
+                androidx.compose.material3.Icon(
+                    Icons.Default.ClearAll,
+                    contentDescription = stringResource(R.string.cd_clear),
+                )
                 Spacer(Modifier.padding(horizontal = 2.dp))
-                Text("Clear")
+                Text(stringResource(R.string.action_clear))
             }
         }
         Text(
-            "Hold top trigger to scan",
+            stringResource(R.string.scan_trigger_hint_hold),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -436,12 +444,12 @@ fun WorkflowScanPanel(
                 val entry = resolveMap[tag.epc.uppercase()]
                 ResolvedScanRow(
                     code = tag.epc,
-                    typeLabel = "RFID",
+                    typeLabel = stringResource(R.string.scan_type_rfid),
                     rssi = tag.rssi?.toString(),
                     entry = entry,
                 )
             },
-            emptyText = "Scanned tags appear here.",
+            emptyText = stringResource(R.string.scan_table_empty),
             onUnknownClick = onUnknownClick,
         )
     }
@@ -461,6 +469,9 @@ fun ResolvedScanTable(
     onUnknownClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val pendingLabel = stringResource(R.string.symbol_ellipsis)
+    val notRegisteredLabel = stringResource(R.string.scan_status_not_registered)
+    val linkedLabel = stringResource(R.string.scan_status_linked)
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
@@ -469,9 +480,9 @@ fun ResolvedScanTable(
     ) {
         WorkflowTableHeader(
             listOf(
-                DataTableColumn("Code", 1.3f),
-                DataTableColumn("ERP", 1f),
-                DataTableColumn("Type", 0.45f),
+                DataTableColumn(stringResource(R.string.table_col_code), 1.3f),
+                DataTableColumn(stringResource(R.string.table_col_erp), 1f),
+                DataTableColumn(stringResource(R.string.table_col_type), 0.45f),
             ),
         )
         if (rows.isEmpty()) {
@@ -496,12 +507,12 @@ fun ResolvedScanTable(
                         WorkflowTableCell(row.code, 1.3f, mono = true)
                         WorkflowTableCell(
                             when (status) {
-                                ScanResolveStatus.PENDING -> "…"
-                                ScanResolveStatus.UNKNOWN -> "Not registered"
+                                ScanResolveStatus.PENDING -> pendingLabel
+                                ScanResolveStatus.UNKNOWN -> notRegisteredLabel
                                 ScanResolveStatus.REGISTERED -> listOfNotNull(
                                     row.entry?.productName,
                                     row.entry?.variationLabel,
-                                ).joinToString(" · ").ifBlank { "Linked" }
+                                ).joinToString(" · ").ifBlank { linkedLabel }
                             },
                             1f,
                         )

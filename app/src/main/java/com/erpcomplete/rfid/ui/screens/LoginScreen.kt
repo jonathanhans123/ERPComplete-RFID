@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -48,7 +49,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import com.erpcomplete.rfid.BuildConfig
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.data.remote.LoginRequest
 import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
@@ -69,6 +72,7 @@ fun LoginScreen(container: AppContainer, onLoginSuccess: (needsWorkspace: Boolea
     var loading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = MaterialTheme.colorScheme.primary,
         unfocusedBorderColor = MaterialTheme.colorScheme.outline,
@@ -107,13 +111,13 @@ fun LoginScreen(container: AppContainer, onLoginSuccess: (needsWorkspace: Boolea
                     )
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        "ERPComplete RFID",
+                        stringResource(R.string.app_name),
                         style = MaterialTheme.typography.headlineMedium,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "Warehouse scanning with Zebra RFD90",
+                        stringResource(R.string.login_tagline),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.9f),
                     )
@@ -130,12 +134,12 @@ fun LoginScreen(container: AppContainer, onLoginSuccess: (needsWorkspace: Boolea
             ) {
                 Column(Modifier.padding(24.dp)) {
                     Text(
-                        "Welcome back",
+                        stringResource(R.string.login_welcome),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        "Sign in with your ERP account",
+                        stringResource(R.string.login_subtitle),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
@@ -144,7 +148,7 @@ fun LoginScreen(container: AppContainer, onLoginSuccess: (needsWorkspace: Boolea
                     OutlinedTextField(
                         value = email,
                         onValueChange = { email = it },
-                        label = { Text("Email") },
+                        label = { Text(stringResource(R.string.login_email)) },
                         leadingIcon = { Icon(Icons.Default.Email, null) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
@@ -162,13 +166,17 @@ fun LoginScreen(container: AppContainer, onLoginSuccess: (needsWorkspace: Boolea
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        label = { Text("Password") },
+                        label = { Text(stringResource(R.string.login_password)) },
                         leadingIcon = { Icon(Icons.Default.Lock, null) },
                         trailingIcon = {
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                 Icon(
                                     if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                    contentDescription = if (passwordVisible) {
+                                        stringResource(R.string.login_hide_password)
+                                    } else {
+                                        stringResource(R.string.login_show_password)
+                                    },
                                 )
                             }
                         },
@@ -193,7 +201,7 @@ fun LoginScreen(container: AppContainer, onLoginSuccess: (needsWorkspace: Boolea
                     Spacer(Modifier.height(22.dp))
 
                     ErpPrimaryButton(
-                        text = "Sign in",
+                        text = stringResource(R.string.login_sign_in),
                         loading = loading,
                         enabled = email.isNotBlank() && password.isNotBlank(),
                         onClick = {
@@ -235,9 +243,9 @@ fun LoginScreen(container: AppContainer, onLoginSuccess: (needsWorkspace: Boolea
                                     )
                                     when {
                                         wsPayload.businessUnits.isEmpty() ->
-                                            error = "No business unit assigned to this account."
+                                            error = context.getString(R.string.login_no_business_unit)
                                         wsPayload.warehouses.isEmpty() ->
-                                            error = "No warehouse assigned to this account."
+                                            error = context.getString(R.string.login_no_warehouse)
                                         wsPayload.businessUnits.size == 1 &&
                                             wsPayload.warehouses.size == 1 &&
                                             wsPayload.warehouses.first().teamId != null -> {
@@ -262,7 +270,7 @@ fun LoginScreen(container: AppContainer, onLoginSuccess: (needsWorkspace: Boolea
             if (BuildConfig.DEBUG) {
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    "API: ${BuildConfig.API_BASE_URL}",
+                    stringResource(R.string.login_api_debug, BuildConfig.API_BASE_URL),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

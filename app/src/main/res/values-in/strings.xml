@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ERPComplete RFID</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Beranda</string>
+    <string name="nav_connect">Hubungkan</string>
+    <string name="nav_operations">Operasi</string>
+    <string name="nav_search">Cari</string>
+    <string name="nav_settings">Pengaturan</string>
+
+    <!-- Common -->
+    <string name="action_cancel">Batal</string>
+    <string name="action_change">Ubah</string>
+    <string name="action_save">Simpan</string>
+    <string name="action_dismiss">Tutup</string>
+    <string name="action_retry">Coba lagi</string>
+    <string name="status_connected">Terhubung</string>
+    <string name="status_not_connected">Tidak terhubung</string>
+    <string name="cd_refresh">Segarkan</string>
+    <string name="cd_sign_out">Keluar</string>
+    <string name="cd_warehouse">Gudang</string>
+    <string name="cd_change_workspace">Ubah ruang kerja</string>
+    <string name="cd_open_workspace_picker">Buka pemilih ruang kerja</string>
+
+    <!-- Login -->
+    <string name="login_tagline">Pemindaian gudang dengan Zebra RFD90</string>
+    <string name="login_welcome">Selamat datang kembali</string>
+    <string name="login_subtitle">Masuk dengan akun ERP Anda</string>
+    <string name="login_email">Email</string>
+    <string name="login_password">Kata sandi</string>
+    <string name="login_show_password">Tampilkan kata sandi</string>
+    <string name="login_hide_password">Sembunyikan kata sandi</string>
+    <string name="login_sign_in">Masuk</string>
+    <string name="login_no_business_unit">Tidak ada unit bisnis yang ditetapkan untuk akun ini.</string>
+    <string name="login_no_warehouse">Tidak ada gudang yang ditetapkan untuk akun ini.</string>
+    <string name="login_api_debug">API: %1$s</string>
+
+    <!-- Workspace -->
+    <string name="workspace_none">Belum ada ruang kerja dipilih</string>
+    <string name="workspace_tap_to_choose">Ketuk untuk memilih unit bisnis dan gudang</string>
+    <string name="workspace_team">Tim: %1$s</string>
+    <string name="workspace_change_title">Ubah ruang kerja?</string>
+    <string name="workspace_change_message">Pekerjaan yang belum disimpan di layar terbuka mungkin hilang. Lanjutkan memilih gudang lain?</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Pengaturan</string>
+    <string name="settings_subtitle">Perangkat &amp; ruang kerja</string>
+    <string name="settings_section_language">Bahasa</string>
+    <string name="settings_language_title">Bahasa aplikasi</string>
+    <string name="settings_language_subtitle">Pilih bahasa tampilan</string>
+    <string name="settings_language_system">Ikuti sistem</string>
+    <string name="settings_language_english">Bahasa Inggris</string>
+    <string name="settings_language_indonesian">Bahasa Indonesia</string>
+    <string name="settings_section_rfid">Pembaca RFID</string>
+    <string name="settings_scan_profile_title">Profil pemindaian</string>
+    <string name="settings_scan_profile_subtitle">Daya dan kecepatan tautan untuk inventaris</string>
+    <string name="settings_scan_range">Jangkauan</string>
+    <string name="settings_scan_range_desc">Jarak maksimum</string>
+    <string name="settings_scan_dense">Padat</string>
+    <string name="settings_scan_dense_desc">Lorong ramai</string>
+    <string name="settings_epc_prefilter_title">Pra-filter EPC</string>
+    <string name="settings_epc_prefilter_subtitle">Masker perangkat keras untuk awalan tag perusahaan</string>
+    <string name="settings_epc_prefilter_enable">Aktifkan masker di pembaca</string>
+    <string name="settings_epc_prefix_label">Awalan EPC perusahaan</string>
+    <string name="settings_epc_prefix_placeholder">3034257B</string>
+    <string name="settings_epc_prefix_help">Heksadesimal saja — digunakan saat tidak ada target lokasi</string>
+    <string name="settings_save_prefix">Simpan awalan</string>
+    <string name="settings_active_mask">Aktif: %1$s</string>
+    <string name="settings_diagnostics_title">Diagnostik pembaca</string>
+    <string name="settings_diagnostics_live">Langsung dari RFD90</string>
+    <string name="settings_diagnostics_connect_first">Hubungkan pembaca terlebih dahulu</string>
+    <string name="settings_scanner_battery">Baterai pemindai</string>
+    <string name="settings_pair_reader_hint">Pasangkan RFD90 di tab Hubungkan untuk melihat firmware, baterai, dan detail Bluetooth di sini.</string>
+    <string name="settings_firmware_title">Pembaruan firmware</string>
+    <string name="settings_firmware_subtitle">Periksa Zebra.com untuk pembaruan RFD90</string>
+    <string name="settings_firmware_auto_check">Periksa otomatis saat pembaca terhubung</string>
+    <string name="settings_firmware_installed">Terpasang: %1$s</string>
+    <string name="settings_firmware_checking">Memeriksa…</string>
+    <string name="settings_firmware_check">Periksa pembaruan firmware</string>
+    <string name="settings_firmware_download">Unduh dari Zebra</string>
+    <string name="settings_firmware_install">Pasang di pembaca</string>
+    <string name="settings_firmware_notes_title">Catatan firmware</string>
+    <string name="settings_firmware_notes_body">Pembaruan ditemukan dari halaman dukungan Zebra melalui ERP, lalu diunduh dan diterapkan melalui Bluetooth. Pastikan baterai di atas 20% dan tetap dekat pembaca hingga reboot. Paket .EDAT terenkripsi belum didukung.</string>
+    <string name="settings_section_server">Server</string>
+    <string name="settings_api_url_label">URL dasar API</string>
+    <string name="settings_api_url_default">Bawaan: %1$s</string>
+    <string name="settings_save_api_url">Simpan URL API</string>
+    <string name="settings_api_url_saved">URL API disimpan — mulai ulang aplikasi jika permintaan gagal</string>
+    <string name="settings_section_sync">Sinkronisasi</string>
+    <string name="settings_pending_uploads">Unggahan tertunda: %1$d</string>
+    <string name="settings_failed_batches">%1$d batch gagal setelah %2$d percobaan</string>
+    <string name="settings_retry_sync">Coba sinkron lagi</string>
+    <string name="settings_discard_failed">Buang yang gagal</string>
+    <string name="settings_section_tags">Tag</string>
+    <string name="settings_void_tag_label">Batalkan tag rusak (EPC)</string>
+    <string name="settings_void_tag">Batalkan tag</string>
+    <string name="settings_void_enter_epc">Masukkan EPC</string>
+    <string name="settings_void_success">Tag dibatalkan</string>
+    <string name="settings_section_account">Akun</string>
+    <string name="settings_sign_out">Keluar</string>
+    <string name="settings_version">ERPComplete RFID %1$s</string>
+
+    <!-- Diagnostics labels -->
+    <string name="diag_reader">Pembaca</string>
+    <string name="diag_model">Model</string>
+    <string name="diag_firmware">Firmware</string>
+    <string name="diag_serial">Serial</string>
+    <string name="diag_bluetooth">Bluetooth</string>
+    <string name="diag_profile">Profil</string>
+    <string name="diag_antennas">Antena</string>
+</resources>

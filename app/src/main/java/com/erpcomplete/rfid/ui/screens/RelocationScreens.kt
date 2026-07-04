@@ -1,5 +1,6 @@
 package com.erpcomplete.rfid.ui.screens
 
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,8 +24,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.data.remote.CreateStockRelocationRequest
 import com.erpcomplete.rfid.data.remote.RelocationProductPayload
@@ -44,7 +48,9 @@ import com.erpcomplete.rfid.ui.components.applyCardListSortSearch
 import com.erpcomplete.rfid.ui.components.rememberTableSortSearch
 import com.erpcomplete.rfid.ui.components.rememberWorkflowLiveList
 import com.erpcomplete.rfid.util.ApiErrorParser
+import com.erpcomplete.rfid.ui.util.UiStrings
 import com.erpcomplete.rfid.util.DisplayFormat
+import com.erpcomplete.rfid.util.StatusMessage
 import com.erpcomplete.rfid.util.PickerMappers
 import com.erpcomplete.rfid.util.StockLinePreset
 import com.erpcomplete.rfid.util.UNMARKED_STOCK_LOCATION_ID
@@ -89,6 +95,7 @@ internal fun RelocationListScreen(
     onCreate: () -> Unit,
     onOpen: (Long) -> Unit,
 ) {
+    val emDash = stringResource(R.string.symbol_em_dash)
     val whId = container.workspaceContext().warehouseId
     val sortSearch = rememberTableSortSearch()
     val liveList = rememberWorkflowLiveList(enabled = true) { page ->
@@ -96,7 +103,12 @@ internal fun RelocationListScreen(
         if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
         envelopePage(res, page)
     }
-    val sortLabels = listOf("Number", "Status", "Date", "Reason")
+    val sortLabels = listOf(
+        stringResource(R.string.col_number),
+        stringResource(R.string.label_status),
+        stringResource(R.string.label_date),
+        stringResource(R.string.col_reason),
+    )
     val visibleRows = remember(liveList.rows, sortSearch.searchQuery, sortSearch.sortColumnIndex, sortSearch.sortDirection) {
         liveList.rows.applyCardListSortSearch(
             sortSearch,
@@ -110,13 +122,13 @@ internal fun RelocationListScreen(
     }
 
     ErpScaffold(
-        title = "Relocations",
-        subtitle = "Move stock between bins",
+        title = stringResource(R.string.inventory_relocations_title),
+        subtitle = stringResource(R.string.inventory_relocations_subtitle),
         onBack = onBack,
         actions = {
             if (canCreate) {
                 IconButton(onClick = onCreate) {
-                    Icon(Icons.Default.Add, contentDescription = "New relocation")
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_new_relocation))
                 }
             }
         },
@@ -127,18 +139,21 @@ internal fun RelocationListScreen(
             itemCount = visibleRows.size,
             sortSearch = sortSearch,
             sortLabels = sortLabels,
-            searchPlaceholder = "Search relocations…",
+            searchPlaceholder = stringResource(R.string.search_relocations_hint),
         )
         when {
             liveList.loading && visibleRows.isEmpty() -> WorkflowListCardSkeleton(5)
-            visibleRows.isEmpty() -> Text("No relocations yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            visibleRows.isEmpty() -> Text(
+                stringResource(R.string.inventory_relocations_empty),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             else -> visibleRows.forEach { row ->
                 val id = row.long("id") ?: return@forEach
                 ErpCard(onClick = { onOpen(id) }) {
-                    Text(row.string("stock_relocation_number") ?: "—", fontWeight = FontWeight.SemiBold)
+                    Text(row.string("stock_relocation_number") ?: emDash, fontWeight = FontWeight.SemiBold)
                     Text(
                         listOfNotNull(
-                            DisplayFormat.status(row.string("status")),
+                            UiStrings.apiStatus(row.string("status")),
                             row.string("relocation_date"),
                             row.string("reason"),
                         ).joinToString(" · "),
@@ -157,15 +172,17 @@ internal fun RelocationFormScreen(
     onBack: () -> Unit,
     onSaved: () -> Unit,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val whId = container.workspaceContext().warehouseId
     if (whId == null) {
-        ErpScaffold(title = "Relocate stock", onBack = onBack) {
-            StatusBanner("Select a workspace warehouse first.", isError = true)
+        ErpScaffold(title = stringResource(R.string.relocation_form_title), onBack = onBack) {
+            StatusBanner(stringResource(R.string.inventory_workspace_required), isError = true)
         }
         return
     }
 
+    val defaultReason = stringResource(R.string.relocation_default_reason)
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var selectedProduct by remember { mutableStateOf<PickerOption?>(null) }
@@ -174,7 +191,7 @@ internal fun RelocationFormScreen(
     var fromLocation by remember { mutableStateOf<PickerOption?>(null) }
     var toLocation by remember { mutableStateOf<PickerOption?>(null) }
     var locationOptions by remember { mutableStateOf<List<PickerOption>>(emptyList()) }
-    var reason by remember { mutableStateOf("Mobile bin relocation") }
+    var reason by remember { mutableStateOf(defaultReason) }
     var notes by remember { mutableStateOf("") }
     var batchNumber by remember { mutableStateOf(preset.batchNumber ?: "") }
     var rollNumber by remember { mutableStateOf(preset.rollNumber ?: "") }
@@ -190,12 +207,21 @@ internal fun RelocationFormScreen(
     var productOptions by remember { mutableStateOf<List<PickerOption>>(emptyList()) }
 
     val requiresVariation = variationOptions.isNotEmpty()
-    val qtyLabel = if (isRollProduct) rollLengthLabel(quantityUnitSuffix) else "Available at source"
+    val lengthLabelPrefix = stringResource(R.string.label_length)
+    val qtyLabel = if (isRollProduct) {
+        rollLengthLabel(quantityUnitSuffix, lengthLabelPrefix)
+    } else {
+        stringResource(R.string.label_available_at_source)
+    }
     val moveLabel = if (isRollProduct) {
         val suffix = quantityUnitSuffix?.takeIf { it.isNotBlank() }
-        if (suffix != null) "Length to move ($suffix)" else "Length to move"
+        if (suffix != null) {
+            stringResource(R.string.label_length_to_move_with_unit, suffix)
+        } else {
+            stringResource(R.string.label_length_to_move)
+        }
     } else {
-        "Quantity to move"
+        stringResource(R.string.label_quantity_to_move)
     }
 
     suspend fun fetchSourceStock(productId: Long) {
@@ -210,7 +236,7 @@ internal fun RelocationFormScreen(
         val body = res.body()?.asJsonObject
         if (body?.get("requires_variation")?.asBoolean == true) {
             sourceQty = ""
-            message = "Select a variation to load source stock."
+            message = context.getString(R.string.error_select_variation_for_source_stock)
             return
         }
         isRollProduct = body?.get("is_roll")?.asBoolean == true || isRollProduct
@@ -227,7 +253,7 @@ internal fun RelocationFormScreen(
             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
             val body = res.body()?.asJsonObject
             isRollProduct = body?.get("product_type")?.asString == "roll"
-            val options = parseRelocationVariationOptions(body?.getAsJsonArray("variations"))
+            val options = parseRelocationVariationOptions(body?.getAsJsonArray("variations"), context)
             variationOptions = options
             selectedVariation = preselectVariationId?.let { id -> options.firstOrNull { it.id == id } }
             if (options.isEmpty() || selectedVariation != null) {
@@ -243,7 +269,7 @@ internal fun RelocationFormScreen(
         val productId = selectedProduct?.id ?: return
         if (variationOptions.isNotEmpty() && selectedVariation == null) {
             sourceQty = ""
-            message = "Select a variation to load source stock."
+            message = context.getString(R.string.error_select_variation_for_source_stock)
             return
         }
         scope.launchWorkflow({ loading = it }, { message = it }) {
@@ -253,7 +279,10 @@ internal fun RelocationFormScreen(
     }
 
     LaunchedEffect(preset.productId) {
-        val unmarked = PickerOption(UNMARKED_STOCK_LOCATION_ID, "Unmarked location")
+        val unmarked = PickerOption(
+            UNMARKED_STOCK_LOCATION_ID,
+            context.getString(R.string.label_unmarked_location),
+        )
         locationOptions = listOf(unmarked)
         runCatching {
             val locRes = container.api.listWarehouseLocations(warehouseId = whId, perPage = 200)
@@ -267,7 +296,7 @@ internal fun RelocationFormScreen(
         if (preset.productId != null) {
             selectedProduct = PickerOption(
                 preset.productId,
-                preset.productLabel ?: "Product #${preset.productId}",
+                preset.productLabel ?: context.getString(R.string.product_fallback_title, preset.productId),
             )
             preset.variationLabel?.let { label ->
                 preset.variationValueId?.let { id ->
@@ -278,13 +307,17 @@ internal fun RelocationFormScreen(
         }
     }
 
-    ErpScaffold(title = "Relocate stock", subtitle = "Same warehouse · different bin", onBack = onBack) {
+    ErpScaffold(
+        title = stringResource(R.string.relocation_form_title),
+        subtitle = stringResource(R.string.relocation_form_subtitle),
+        onBack = onBack,
+    ) {
         message?.let { StatusBanner(it, isError = true) }
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SearchablePickerField(
-                label = "From location",
+                label = stringResource(R.string.label_from_location),
                 selected = fromLocation,
-                placeholder = "Source bin (or unmarked)",
+                placeholder = stringResource(R.string.placeholder_source_bin),
                 onOpen = { fromLocationPickerOpen = true },
                 onClear = {
                     fromLocation = null
@@ -292,23 +325,23 @@ internal fun RelocationFormScreen(
                 },
             )
             SearchablePickerField(
-                label = "To location",
+                label = stringResource(R.string.label_to_location),
                 selected = toLocation,
-                placeholder = "Destination bin",
+                placeholder = stringResource(R.string.placeholder_destination_bin),
                 onOpen = { toLocationPickerOpen = true },
                 onClear = { toLocation = null },
             )
             SearchablePickerField(
-                label = "Product",
+                label = stringResource(R.string.label_product),
                 selected = selectedProduct,
-                placeholder = "Choose product",
+                placeholder = stringResource(R.string.placeholder_choose_product),
                 onOpen = { productPickerOpen = true },
             )
             if (selectedProduct != null && requiresVariation) {
                 SearchablePickerField(
-                    label = "Variation",
+                    label = stringResource(R.string.label_variation),
                     selected = selectedVariation,
-                    placeholder = "Choose variation",
+                    placeholder = stringResource(R.string.placeholder_choose_variation),
                     onOpen = { variationPickerOpen = true },
                     onClear = {
                         selectedVariation = null
@@ -320,7 +353,7 @@ internal fun RelocationFormScreen(
                 OutlinedTextField(
                     rollNumber,
                     { rollNumber = it },
-                    label = { Text("Roll number") },
+                    label = { Text(stringResource(R.string.label_roll_number)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
@@ -328,7 +361,7 @@ internal fun RelocationFormScreen(
                 OutlinedTextField(
                     batchNumber,
                     { batchNumber = it },
-                    label = { Text("Batch (optional)") },
+                    label = { Text(stringResource(R.string.label_batch_optional)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
@@ -341,38 +374,40 @@ internal fun RelocationFormScreen(
                 readOnly = true,
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { refreshSourceStock() }) { Text("Refresh source stock") }
+                TextButton(onClick = { refreshSourceStock() }) {
+                    Text(stringResource(R.string.action_refresh_source_stock))
+                }
             }
             OutlinedTextField(moveQty, { moveQty = it }, label = { Text(moveLabel) }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(reason, { reason = it }, label = { Text("Reason") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(reason, { reason = it }, label = { Text(stringResource(R.string.label_reason)) }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(notes, { notes = it }, label = { Text(stringResource(R.string.label_notes)) }, modifier = Modifier.fillMaxWidth())
             ErpPrimaryButton(
-                text = "Submit relocation",
+                text = stringResource(R.string.relocation_submit),
                 loading = loading,
                 enabled = selectedProduct != null && moveQty.isNotBlank() && toLocation != null,
                 onClick = {
                     val productId = selectedProduct?.id ?: return@ErpPrimaryButton
                     if (requiresVariation && selectedVariation == null) {
-                        message = "Select a variation for this product."
+                        message = context.getString(R.string.error_select_variation_for_product)
                         return@ErpPrimaryButton
                     }
                     if (isRollProduct && rollNumber.isBlank()) {
-                        message = "Enter the roll number to relocate."
+                        message = context.getString(R.string.error_enter_roll_number_relocate)
                         return@ErpPrimaryButton
                     }
                     val qty = moveQty.toDoubleOrNull() ?: return@ErpPrimaryButton
                     if (qty <= 0) {
-                        message = "Enter a quantity greater than zero."
+                        message = context.getString(R.string.error_qty_must_be_positive)
                         return@ErpPrimaryButton
                     }
                     val fromId = fromLocation?.id
                     val toId = toLocation?.id
                     if (fromId != null && toId != null && fromId == toId) {
-                        message = "From and to locations must be different."
+                        message = context.getString(R.string.error_from_to_must_differ)
                         return@ErpPrimaryButton
                     }
                     if (fromId == null && toId == UNMARKED_STOCK_LOCATION_ID) {
-                        message = "Choose a destination bin different from unmarked source."
+                        message = context.getString(R.string.error_unmarked_destination_required)
                         return@ErpPrimaryButton
                     }
                     scope.launchWorkflow({ loading = it }, { message = it }) {
@@ -401,7 +436,10 @@ internal fun RelocationFormScreen(
                             if (createdId != null) {
                                 val approveRes = container.api.approveStockRelocation(createdId)
                                 if (!approveRes.isSuccessful) {
-                                    message = "Created pending approval: ${ApiErrorParser.httpMessage(approveRes)}"
+                                    message = context.getString(
+                                        R.string.inventory_created_pending_approval,
+                                        ApiErrorParser.httpMessage(approveRes),
+                                    )
                                     onSaved()
                                     return@launchWorkflow null
                                 }
@@ -418,7 +456,7 @@ internal fun RelocationFormScreen(
     if (productPickerOpen) {
         SearchablePickerSheet(
             visible = true,
-            title = "Product",
+            title = stringResource(R.string.label_product),
             options = productOptions,
             onDismiss = { productPickerOpen = false },
             onSearch = { query ->
@@ -444,7 +482,7 @@ internal fun RelocationFormScreen(
     if (variationPickerOpen) {
         SearchablePickerSheet(
             visible = true,
-            title = "Variation",
+            title = stringResource(R.string.label_variation),
             options = variationOptions,
             onDismiss = { variationPickerOpen = false },
             onSelect = {
@@ -452,13 +490,13 @@ internal fun RelocationFormScreen(
                 variationPickerOpen = false
                 refreshSourceStock()
             },
-            searchHint = "Filter variations…",
+            searchHint = stringResource(R.string.filter_variations_hint),
         )
     }
     if (fromLocationPickerOpen) {
         SearchablePickerSheet(
             visible = true,
-            title = "From location",
+            title = stringResource(R.string.label_from_location),
             options = locationOptions,
             onDismiss = { fromLocationPickerOpen = false },
             onSelect = {
@@ -471,7 +509,7 @@ internal fun RelocationFormScreen(
     if (toLocationPickerOpen) {
         SearchablePickerSheet(
             visible = true,
-            title = "To location",
+            title = stringResource(R.string.label_to_location),
             options = locationOptions,
             onDismiss = { toLocationPickerOpen = false },
             onSelect = {
@@ -490,6 +528,7 @@ internal fun RelocationDetailScreen(
     onChanged: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val emDash = stringResource(R.string.symbol_em_dash)
     var actionLoading by remember { mutableStateOf(false) }
     var detailLoading by remember { mutableStateOf(true) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -507,25 +546,38 @@ internal fun RelocationDetailScreen(
     }
 
     val status = relocation?.string("status")
-    val number = relocation?.string("stock_relocation_number") ?: "Relocation"
+    val number = relocation?.string("stock_relocation_number")
+        ?: stringResource(R.string.relocation_fallback_title)
     val items = relocation?.let { nestedItems(it, "items") } ?: emptyList()
 
-    ErpScaffold(title = number, subtitle = DisplayFormat.status(status), onBack = onBack) {
-        message?.let { StatusBanner(it, isError = it.contains("Error", true) || it.contains("Failed", true)) }
+    ErpScaffold(title = number, subtitle = UiStrings.apiStatus(status), onBack = onBack) {
+        message?.let { StatusBanner(it, isError = StatusMessage.looksLikeError(it)) }
         if (detailLoading) {
             WorkflowListCardSkeleton(3)
         } else {
             relocation?.let { doc ->
                 ErpCard {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Reason: ${doc.string("reason") ?: "—"}")
-                        Text("Date: ${doc.string("relocation_date") ?: "—"}")
+                        Text(stringResource(R.string.label_reason_value, doc.string("reason") ?: emDash))
+                        Text(stringResource(R.string.label_date_value, doc.string("relocation_date") ?: emDash))
                         doc.obj("from_location")?.let {
-                            Text("From: ${WorkflowJson.locationLabel(it)}", style = MaterialTheme.typography.bodySmall)
-                        } ?: Text("From: Unmarked location", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                stringResource(R.string.label_from_value, WorkflowJson.locationLabel(it)),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        } ?: Text(
+                            stringResource(R.string.label_from_unmarked),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                         doc.obj("to_location")?.let {
-                            Text("To: ${WorkflowJson.locationLabel(it)}", style = MaterialTheme.typography.bodySmall)
-                        } ?: Text("To: Unmarked location", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                stringResource(R.string.label_to_value, WorkflowJson.locationLabel(it)),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        } ?: Text(
+                            stringResource(R.string.label_to_unmarked),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                 }
             }
@@ -538,15 +590,21 @@ internal fun RelocationDetailScreen(
                             Text(it, style = MaterialTheme.typography.bodySmall)
                         }
                         line.string("roll_number")?.takeIf { it.isNotBlank() }?.let {
-                            Text("Roll $it", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                stringResource(R.string.label_roll_value, it),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         }
                         val qty = line.double("quantity") ?: 0.0
                         val unit = line.quantityUnitSuffix()
                         Text(
                             if (isRollLine) {
-                                "Length: ${formatQtyWithUnit(DisplayFormat.qty(qty), unit, isRoll = true)}"
+                                stringResource(
+                                    R.string.label_length_value,
+                                    formatQtyWithUnit(DisplayFormat.qty(qty), unit, isRoll = true),
+                                )
                             } else {
-                                "Qty: ${DisplayFormat.qty(qty)}"
+                                stringResource(R.string.label_qty_value, DisplayFormat.qty(qty))
                             },
                             fontWeight = FontWeight.Medium,
                         )
@@ -555,7 +613,7 @@ internal fun RelocationDetailScreen(
             }
             if (status == "pending") {
                 ErpPrimaryButton(
-                    text = "Approve & move stock",
+                    text = stringResource(R.string.relocation_approve_and_move),
                     loading = actionLoading,
                     onClick = {
                         scope.launchWorkflow({ actionLoading = it }, { message = it }) {
@@ -617,7 +675,10 @@ private fun buildRelocationProductPayload(
     }
 }
 
-private fun parseRelocationVariationOptions(variations: com.google.gson.JsonArray?): List<PickerOption> =
+private fun parseRelocationVariationOptions(
+    variations: com.google.gson.JsonArray?,
+    context: Context,
+): List<PickerOption> =
     variations?.mapNotNull { el ->
         val v = el.asJsonObject
         val id = v.long("id") ?: return@mapNotNull null
@@ -629,6 +690,8 @@ private fun parseRelocationVariationOptions(variations: com.google.gson.JsonArra
             if (!name.isNullOrBlank() && !value.isNullOrBlank()) "$name: $value" else null
         }?.joinToString(" · ")
         val main = v.string("value") ?: v.string("display_label")
-        val title = listOfNotNull(main, attrText).joinToString(" — ").ifBlank { "Variation #$id" }
+        val title = listOfNotNull(main, attrText).joinToString(" — ").ifBlank {
+            context.getString(R.string.variation_fallback_title, id)
+        }
         PickerOption(id, title, attrText)
     } ?: emptyList()

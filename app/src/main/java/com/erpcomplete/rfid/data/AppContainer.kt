@@ -33,6 +33,7 @@ class AppContainer(context: Context) {
     val authStore = AuthStore(appContext)
     val sessionCache = SessionCache(authStore)
     val apiSettingsStore = ApiSettingsStore(appContext)
+    val localeSettingsStore = LocaleSettingsStore(appContext)
     val workflowDraftStore = WorkflowDraftStore(appContext)
 
     init {
@@ -158,7 +159,7 @@ class AppContainer(context: Context) {
     )
     val workflowApi = WorkflowApiHelper(api, syncRepository, networkSyncMonitor)
     val rfidSettingsStore = RfidSettingsStore(appContext)
-    val zebraFirmwareRepository = ZebraFirmwareRepository(api)
+    val zebraFirmwareRepository = ZebraFirmwareRepository(appContext, api)
     val rfidManager = RfidManager(appContext, rfidSettingsStore, zebraFirmwareRepository)
 
     /** Reload ERP page permissions for mobile inventory (requires workspace headers when set). */

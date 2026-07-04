@@ -26,8 +26,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.util.PhoneBluetooth
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -67,22 +69,20 @@ fun BluetoothDisabledBanner(
         ) {
             Icon(
                 Icons.Default.BluetoothDisabled,
-                contentDescription = null,
+                contentDescription = stringResource(R.string.cd_bluetooth_disabled),
                 tint = MaterialTheme.colorScheme.onErrorContainer,
             )
             Column(Modifier.weight(1f)) {
                 Text(
-                    "Bluetooth is off",
+                    stringResource(R.string.bluetooth_off_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
                 Text(
-                    if (compact) {
-                        "Turn on Bluetooth to pair and use the RFD90 reader."
-                    } else {
-                        "Turn on Bluetooth to pair the Zebra RFD90, scan tags, and sync warehouse workflows."
-                    },
+                    stringResource(
+                        if (compact) R.string.bluetooth_off_body_compact else R.string.bluetooth_off_body_full,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
@@ -94,7 +94,7 @@ fun BluetoothDisabledBanner(
                     )
                 },
             ) {
-                Text("Turn on", color = MaterialTheme.colorScheme.onErrorContainer)
+                Text(stringResource(R.string.action_turn_on_bluetooth), color = MaterialTheme.colorScheme.onErrorContainer)
             }
         }
     }

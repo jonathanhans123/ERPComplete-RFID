@@ -24,13 +24,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.data.remote.RegisterTagRequest
 import com.erpcomplete.rfid.ui.components.PickerOption
+import com.erpcomplete.rfid.ui.util.UiStrings
 import com.erpcomplete.rfid.util.ApiErrorParser
+import com.erpcomplete.rfid.util.StatusMessage
 import com.erpcomplete.rfid.util.WorkflowJson
 import com.erpcomplete.rfid.util.WorkflowJson.long
 import com.erpcomplete.rfid.util.WorkflowJson.string
@@ -47,6 +52,7 @@ fun TagRegistrationSheet(
 ) {
     if (!visible || code.isNullOrBlank()) return
 
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedProduct by remember(code) { mutableStateOf<PickerOption?>(null) }
@@ -70,7 +76,7 @@ fun TagRegistrationSheet(
                     val id = row.long("id") ?: return@mapNotNull null
                     PickerOption(
                         id = id,
-                        title = row.string("name") ?: "Product #$id",
+                        title = row.string("name") ?: UiStrings.productFallback(id),
                         subtitle = row.string("sku"),
                     )
                 }
@@ -100,7 +106,9 @@ fun TagRegistrationSheet(
                         if (!name.isNullOrBlank() && !value.isNullOrBlank()) "$name: $value" else null
                     }?.joinToString(" · ")
                     val main = v.get("value")?.asString ?: v.get("display_label")?.asString
-                    val title = listOfNotNull(main, attrText).joinToString(" — ").ifBlank { "Variation #$id" }
+                    val title = listOfNotNull(main, attrText).joinToString(" — ").ifBlank {
+                        context.getString(R.string.variation_fallback_title, id)
+                    }
                     PickerOption(id = id, title = title, subtitle = attrText)
                 } ?: emptyList()
                 variationsRequired = variationOptions.isNotEmpty()
@@ -124,7 +132,7 @@ fun TagRegistrationSheet(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Register tag", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.tag_register_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(
                 code.uppercase(),
                 style = MaterialTheme.typography.bodyMedium,
@@ -132,16 +140,23 @@ fun TagRegistrationSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                "This code is not in ERP yet. Link it to a product so workflows can use it.",
+                stringResource(R.string.tag_register_body),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            message?.let { StatusBanner(it, isError = it.contains("Error", true) || it.contains("Choose", true)) }
+            message?.let {
+                val chooseProduct = context.getString(R.string.error_choose_product)
+                val chooseVariation = context.getString(R.string.error_choose_variation)
+                StatusBanner(
+                    it,
+                    isError = StatusMessage.looksLikeError(it, chooseProduct, chooseVariation),
+                )
+            }
 
             SearchablePickerField(
-                label = "Product",
+                label = stringResource(R.string.label_product),
                 selected = selectedProduct,
-                placeholder = "Search product name or SKU",
+                placeholder = stringResource(R.string.tag_register_product_placeholder),
                 onOpen = { productPickerOpen = true },
                 onClear = {
                     selectedProduct = null
@@ -152,9 +167,9 @@ fun TagRegistrationSheet(
             )
             if (variationsRequired || variationOptions.isNotEmpty()) {
                 SearchablePickerField(
-                    label = "Variation",
+                    label = stringResource(R.string.label_variation),
                     selected = selectedVariation,
-                    placeholder = "Choose variation / descriptors",
+                    placeholder = stringResource(R.string.tag_register_variation_placeholder),
                     enabled = selectedProduct != null,
                     onOpen = { variationPickerOpen = true },
                     onClear = { selectedVariation = null },
@@ -162,15 +177,15 @@ fun TagRegistrationSheet(
             }
 
             ErpPrimaryButton(
-                text = "Save & link tag",
+                text = stringResource(R.string.action_save_link_tag),
                 loading = saving,
                 onClick = {
                     scope.launch {
                         saving = true
                         runCatching {
-                            val productId = selectedProduct?.id ?: error("Choose a product")
+                            val productId = selectedProduct?.id ?: error(context.getString(R.string.error_choose_product))
                             if (variationsRequired && selectedVariation == null) {
-                                error("Choose a variation for this product")
+                                error(context.getString(R.string.error_choose_variation))
                             }
                             val res = container.api.registerTag(
                                 RegisterTagRequest(
@@ -193,7 +208,7 @@ fun TagRegistrationSheet(
 
     SearchablePickerSheet(
         visible = productPickerOpen,
-        title = "Product",
+        title = stringResource(R.string.label_product),
         options = productOptions,
         loading = pickerLoading,
         onDismiss = { productPickerOpen = false },
@@ -203,15 +218,15 @@ fun TagRegistrationSheet(
             loadVariations(it.id)
         },
         onSearch = { loadProducts(it) },
-        searchHint = "Search name or SKU…",
+        searchHint = stringResource(R.string.tag_register_search_name_sku_hint),
     )
     SearchablePickerSheet(
         visible = variationPickerOpen,
-        title = "Variation",
+        title = stringResource(R.string.label_variation),
         options = variationOptions,
         loading = pickerLoading,
         onDismiss = { variationPickerOpen = false },
         onSelect = { selectedVariation = it },
-        searchHint = "Filter variations…",
+        searchHint = stringResource(R.string.filter_variations_hint),
     )
 }

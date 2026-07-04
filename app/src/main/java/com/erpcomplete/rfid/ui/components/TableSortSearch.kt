@@ -30,10 +30,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.util.DisplayFormat
 import com.google.gson.JsonObject
 
@@ -92,15 +95,16 @@ fun List<JsonObject>.applyTableSortSearch(
 fun ListSearchField(
     query: String,
     onQueryChange: (String) -> Unit,
-    placeholder: String = "Search list…",
+    placeholder: String? = null,
     modifier: Modifier = Modifier,
 ) {
+    val resolvedPlaceholder = placeholder ?: stringResource(R.string.search_list_hint)
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
         modifier = modifier.fillMaxWidth(),
-        placeholder = { Text(placeholder) },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+        placeholder = { Text(resolvedPlaceholder) },
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = stringResource(R.string.cd_search)) },
         singleLine = true,
     )
 }
@@ -111,7 +115,7 @@ fun JsonIndexListTable(
     columns: List<IndexColumnSpec>,
     sortSearch: TableSortSearchState,
     emptyText: String,
-    searchPlaceholder: String = "Search…",
+    searchPlaceholder: String? = null,
     loading: Boolean = false,
     loadingMore: Boolean = false,
     hasMore: Boolean = false,
@@ -140,7 +144,7 @@ fun JsonIndexListTable(
         listHeader?.invoke()
         if (totalCount != null && totalCount > visible.size) {
             Text(
-                "Showing ${visible.size} of $totalCount — load more or refine search",
+                stringResource(R.string.list_showing_partial, visible.size, totalCount),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -186,7 +190,11 @@ fun JsonIndexListTable(
                     }
                     if (hasMore && onLoadMore != null) {
                         ErpPrimaryButton(
-                            text = if (loadingMore) "Loading…" else "Load more",
+                            text = if (loadingMore) {
+                                stringResource(R.string.action_loading)
+                            } else {
+                                stringResource(R.string.action_load_more)
+                            },
                             loading = loadingMore,
                             onClick = onLoadMore,
                             modifier = Modifier.fillMaxWidth(),
@@ -262,9 +270,10 @@ fun SortableCardListToolbar(
     itemCount: Int,
     sortSearch: TableSortSearchState,
     sortLabels: List<String>,
-    searchPlaceholder: String = "Search…",
+    searchPlaceholder: String? = null,
     modifier: Modifier = Modifier,
 ) {
+    val emDash = stringResource(R.string.display_empty)
     var sortMenuOpen by remember { mutableStateOf(false) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ListSearchField(
@@ -278,7 +287,7 @@ fun SortableCardListToolbar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "$itemCount item${if (itemCount == 1) "" else "s"}",
+                pluralStringResource(R.plurals.list_item_count, itemCount, itemCount),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -286,7 +295,10 @@ fun SortableCardListToolbar(
                 Box {
                     TextButton(onClick = { sortMenuOpen = true }) {
                         Text(
-                            "Sort: ${sortLabels.getOrNull(sortSearch.sortColumnIndex) ?: "—"}",
+                            stringResource(
+                                R.string.list_sort_by,
+                                sortLabels.getOrNull(sortSearch.sortColumnIndex) ?: emDash,
+                            ),
                             style = MaterialTheme.typography.labelLarge,
                         )
                     }
@@ -326,7 +338,7 @@ fun SortableCardListToolbar(
                             SortDirection.ASC -> Icons.Default.ArrowUpward
                             SortDirection.DESC -> Icons.Default.ArrowDownward
                         },
-                        contentDescription = "Toggle sort direction",
+                        contentDescription = stringResource(R.string.cd_toggle_sort_direction),
                     )
                 }
             }
@@ -408,7 +420,9 @@ fun SortableWorkflowTableHeader(
                         sortSearch.sortDirection == SortDirection.ASC -> Icons.Default.ArrowUpward
                         else -> Icons.Default.ArrowDownward
                     },
-                    contentDescription = null,
+                    contentDescription = stringResource(
+                        if (active) R.string.cd_toggle_sort_direction else R.string.cd_sort_column,
+                    ),
                     modifier = Modifier.padding(start = 2.dp),
                     tint = if (active) {
                         MaterialTheme.colorScheme.primary

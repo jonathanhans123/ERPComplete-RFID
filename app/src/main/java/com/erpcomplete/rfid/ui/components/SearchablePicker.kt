@@ -32,9 +32,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 
 data class PickerOption(
     val id: Long,
@@ -65,11 +67,11 @@ fun SearchablePickerField(
             Row {
                 if (selected != null && onClear != null) {
                     IconButton(onClick = onClear) {
-                        Icon(Icons.Default.Close, contentDescription = "Clear")
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cd_clear))
                     }
                 }
                 IconButton(onClick = onOpen, enabled = enabled) {
-                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Choose")
+                    Icon(Icons.Default.ArrowDropDown, contentDescription = stringResource(R.string.cd_choose))
                 }
             }
         },
@@ -89,10 +91,11 @@ fun SearchablePickerSheet(
     onDismiss: () -> Unit,
     onSelect: (PickerOption) -> Unit,
     onSearch: ((String) -> Unit)? = null,
-    searchHint: String = "Search…",
+    searchHint: String? = null,
 ) {
     if (!visible) return
 
+    val resolvedSearchHint = searchHint ?: stringResource(R.string.search_hint)
     var query by remember(visible) { mutableStateOf("") }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -117,8 +120,8 @@ fun SearchablePickerSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 10.dp),
-                placeholder = { Text(searchHint) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                placeholder = { Text(resolvedSearchHint) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = stringResource(R.string.cd_search)) },
                 singleLine = true,
             )
             if (loading) {
@@ -127,7 +130,7 @@ fun SearchablePickerSheet(
                 }
             } else if (filtered.isEmpty()) {
                 Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                    Text("No matches", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.picker_no_matches), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {

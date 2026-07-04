@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.model.BusinessUnitOption
 import com.erpcomplete.rfid.data.model.MobileInventoryPermissions
 import com.erpcomplete.rfid.data.model.WorkspaceOption
@@ -107,7 +108,7 @@ class AuthStore(private val context: Context) {
 
     suspend fun saveWorkspace(workspace: WorkspaceOption) {
         val teamId = workspace.teamId
-            ?: error("Warehouse ${workspace.warehouseName} has no team — contact your administrator.")
+            ?: error(context.getString(R.string.workspace_no_team_mapped, workspace.warehouseName))
         context.dataStore.edit { prefs ->
             prefs[KEY_WAREHOUSE] = workspace.warehouseId.toString()
             prefs[KEY_WAREHOUSE_NAME] = workspace.warehouseName

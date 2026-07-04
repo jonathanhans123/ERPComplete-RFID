@@ -22,7 +22,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.data.remote.PutawayConfirmRequest
 import com.erpcomplete.rfid.data.remote.PutawayItemUpdate
@@ -50,8 +52,10 @@ import com.erpcomplete.rfid.ui.components.rememberScanMatchColors
 import com.erpcomplete.rfid.ui.components.rememberWorkflowLiveList
 import com.erpcomplete.rfid.ui.components.rememberTableSortSearch
 import com.erpcomplete.rfid.util.ApiErrorParser
+import com.erpcomplete.rfid.util.StatusMessage
 import com.google.gson.Gson
 import kotlinx.coroutines.delay
+import com.erpcomplete.rfid.ui.util.UiStrings
 import com.erpcomplete.rfid.util.DisplayFormat
 import com.erpcomplete.rfid.util.PickerMappers
 import com.erpcomplete.rfid.util.WorkflowJson
@@ -126,6 +130,23 @@ fun PutawayScreen(
     val scope = rememberCoroutineScope()
     val scanColors = rememberScanMatchColors()
 
+    val putawayTitle = stringResource(R.string.putaway_title)
+    val putawaySubtitleList = stringResource(R.string.putaway_subtitle_list)
+    val errEmptyTask = stringResource(R.string.putaway_error_empty_task)
+    val errScanTagsFirst = stringResource(R.string.common_error_scan_tags_first)
+    val msgConfirmed = stringResource(R.string.common_success_confirmed)
+    val msgPutawaySaved = stringResource(R.string.putaway_success_saved)
+    val msgPutawayCompleted = stringResource(R.string.putaway_success_completed)
+    val colProduct = stringResource(R.string.common_col_product)
+    val colVar = stringResource(R.string.common_col_variation)
+    val colRoll = stringResource(R.string.common_col_roll)
+    val colToPut = stringResource(R.string.putaway_col_to_put)
+    val colLocation = stringResource(R.string.label_location)
+    val colPut = stringResource(R.string.putaway_col_put)
+    val labelPutawayLength = stringResource(R.string.putaway_label_putaway_length)
+    val labelQtyPutaway = stringResource(R.string.putaway_label_qty_putaway)
+    val rollMarker = stringResource(R.string.putaway_line_roll_marker)
+
     var task by remember { mutableStateOf<JsonObject?>(null) }
     var taskLoading by remember { mutableStateOf(false) }
     var taskLoadedId by remember { mutableLongStateOf(-1L) }
@@ -154,22 +175,25 @@ fun PutawayScreen(
         WorkflowJson.envelopePage(res, page)
     }
     val listSortSearch = rememberTableSortSearch()
-    val putawayIndexColumns = remember {
-        listOf(
-            IndexColumnSpec("Task", 1.1f, { it.string("putaway_task_number") ?: "" }) {
-                TableCell.Text(it.string("putaway_task_number") ?: "—", bold = true)
-            },
-            IndexColumnSpec("Status", 0.8f, { it.string("status") ?: "" }) {
-                TableCell.Status(it.string("status"))
-            },
-            IndexColumnSpec("GR", 0.9f, { it.obj("goods_receipt")?.string("goods_receipt_number") ?: "" }) {
-                TableCell.Text(it.obj("goods_receipt")?.string("goods_receipt_number") ?: "—")
-            },
-            IndexColumnSpec("Warehouse", 1f, { it.obj("warehouse")?.string("name") ?: "" }) {
-                TableCell.Text(it.obj("warehouse")?.string("name") ?: "—")
-            },
-        )
-    }
+    val emDash = stringResource(R.string.display_empty)
+    val colTask = stringResource(R.string.putaway_col_task)
+    val colStatus = stringResource(R.string.common_col_status)
+    val colGr = stringResource(R.string.putaway_col_gr)
+    val colWarehouse = stringResource(R.string.label_warehouse)
+    val putawayIndexColumns = listOf(
+        IndexColumnSpec(colTask, 1.1f, { it.string("putaway_task_number") ?: "" }) {
+            TableCell.Text(it.string("putaway_task_number") ?: emDash, bold = true)
+        },
+        IndexColumnSpec(colStatus, 0.8f, { it.string("status") ?: "" }) {
+            TableCell.Status(it.string("status"))
+        },
+        IndexColumnSpec(colGr, 0.9f, { it.obj("goods_receipt")?.string("goods_receipt_number") ?: "" }) {
+            TableCell.Text(it.obj("goods_receipt")?.string("goods_receipt_number") ?: emDash)
+        },
+        IndexColumnSpec(colWarehouse, 1f, { it.obj("warehouse")?.string("name") ?: "" }) {
+            TableCell.Text(it.obj("warehouse")?.string("name") ?: emDash)
+        },
+    )
 
     fun applyTask(body: JsonObject?) {
         task = body
@@ -243,7 +267,7 @@ fun PutawayScreen(
                 res = container.api.getPutawayTask(id)
                 body = WorkflowJson.envelopeObject(res)
             }
-            applyTask(body ?: error("Empty task"))
+            applyTask(body ?: error(errEmptyTask))
             taskLoadedId = id
             taskLoading = false
             mergePutawayDraft(id)
@@ -270,12 +294,12 @@ fun PutawayScreen(
 
     ErpScaffold(
         title = when (step) {
-            PutawayStep.List -> "Putaway"
-            is PutawayStep.Detail -> task?.string("putaway_task_number") ?: "Putaway"
+            PutawayStep.List -> putawayTitle
+            is PutawayStep.Detail -> task?.string("putaway_task_number") ?: putawayTitle
         },
         subtitle = when (step) {
-            PutawayStep.List -> "Tap a task · auto-syncs"
-            is PutawayStep.Detail -> DisplayFormat.status(task?.string("status"))
+            PutawayStep.List -> putawaySubtitleList
+            is PutawayStep.Detail -> UiStrings.apiStatus(task?.string("status"))
         },
         onBack = {
             when (step) {
@@ -286,7 +310,7 @@ fun PutawayScreen(
     ) {
         message?.let {
             if (!it.isBenignCancellationMessage()) {
-                StatusBanner(it, isError = it.contains("Error", true))
+                StatusBanner(it, isError = StatusMessage.looksLikeError(it))
             }
         }
 
@@ -298,8 +322,8 @@ fun PutawayScreen(
                     rows = liveList.rows,
                     columns = putawayIndexColumns,
                     sortSearch = listSortSearch,
-                    emptyText = "No putaway tasks.",
-                    searchPlaceholder = "Search tasks…",
+                    emptyText = stringResource(R.string.putaway_empty_list),
+                    searchPlaceholder = stringResource(R.string.putaway_search_placeholder),
                     loading = liveList.loading,
                     loadingMore = liveList.loadingMore,
                     hasMore = liveList.hasMore,
@@ -317,10 +341,11 @@ fun PutawayScreen(
                 } else {
                 val taskStatus = task?.string("status")
                 val canEditTask = taskStatus in setOf("pending", "in_progress")
+                val taskLockedMsg = stringResource(R.string.putaway_task_locked_message, UiStrings.apiStatus(taskStatus))
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!canEditTask) {
                         Text(
-                            "Task is ${DisplayFormat.status(taskStatus)} — open from the list only while pending or in progress.",
+                            taskLockedMsg,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -335,18 +360,20 @@ fun PutawayScreen(
                             label = buildString {
                                 append(line.productLabel)
                                 if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
-                                if (line.rollLabel.isNotBlank()) append(" · roll ").append(line.rollLabel)
+                                if (line.rollLabel.isNotBlank()) {
+                                    append(stringResource(R.string.putaway_line_roll_suffix, line.rollLabel))
+                                }
                             },
                         )
                     }
                     WorkflowDataTable(
                         columns = listOf(
-                            DataTableColumn("Product", 0.95f),
-                            DataTableColumn("Var", 0.5f),
-                            DataTableColumn("Roll", 0.4f),
-                            DataTableColumn("To put", 0.4f),
-                            DataTableColumn("Location", 0.65f),
-                            DataTableColumn("Put", 0.4f),
+                            DataTableColumn(colProduct, 0.95f),
+                            DataTableColumn(colVar, 0.5f),
+                            DataTableColumn(colRoll, 0.4f),
+                            DataTableColumn(colToPut, 0.4f),
+                            DataTableColumn(colLocation, 0.65f),
+                            DataTableColumn(colPut, 0.4f),
                         ),
                         rowBackground = { index ->
                             lineHighlights[matchLines.getOrNull(index)?.key]
@@ -356,8 +383,8 @@ fun PutawayScreen(
                         rows = lineEdits.map { line ->
                             listOf(
                                 TableCell.Text(line.productLabel),
-                                TableCell.Text(line.variationLabel.ifBlank { "—" }),
-                                TableCell.Text(line.rollLabel.ifBlank { if (line.isRoll) "—" else "" }),
+                                TableCell.Text(line.variationLabel.ifBlank { emDash }),
+                                TableCell.Text(line.rollLabel.ifBlank { if (line.isRoll) emDash else "" }),
                                 TableCell.Text(
                                     formatQtyWithUnit(
                                         DisplayFormat.qty(line.qtyToPutaway),
@@ -365,36 +392,43 @@ fun PutawayScreen(
                                         line.isRoll,
                                     ),
                                 ),
-                                TableCell.Text(line.locationLabel.ifBlank { "—" }),
+                                TableCell.Text(line.locationLabel.ifBlank { emDash }),
                                 TableCell.Text(
                                     formatQtyWithUnit(line.qtyPutaway, line.quantityUnitSuffix, line.isRoll),
                                 ),
                             )
                         },
-                        emptyText = "No items on this task.",
+                        emptyText = stringResource(R.string.putaway_empty_items),
                     )
                     if (canEditTask) {
                         lineEdits.forEachIndexed { index, line ->
                             val putLabel = if (line.isRoll) {
-                                WorkflowJson.rollLengthLabel(line.quantityUnitSuffix, "Putaway length")
+                                WorkflowJson.rollLengthLabel(line.quantityUnitSuffix, labelPutawayLength)
                             } else {
-                                "Qty putaway"
+                                labelQtyPutaway
                             }
                             Text(
                                 buildString {
                                     append(line.productLabel)
                                     if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
-                                    if (line.rollLabel.isNotBlank()) append(" · roll ").append(line.rollLabel)
-                                    if (line.isRoll && line.rollLabel.isBlank()) append(" (roll)")
+                                    if (line.rollLabel.isNotBlank()) {
+                                        append(stringResource(R.string.putaway_line_roll_suffix, line.rollLabel))
+                                    }
+                                    if (line.isRoll && line.rollLabel.isBlank()) append(" ").append(rollMarker)
                                 },
                                 style = MaterialTheme.typography.labelMedium,
                             )
                             SearchablePickerField(
-                                label = "Storage location",
+                                label = stringResource(R.string.putaway_label_storage_location),
                                 selected = line.locationId?.let {
-                                    PickerOption(it, line.locationLabel.ifBlank { "Location #$it" })
+                                    PickerOption(
+                                        it,
+                                        line.locationLabel.ifBlank {
+                                            stringResource(R.string.putaway_fallback_location, it)
+                                        },
+                                    )
                                 },
-                                placeholder = "Choose location",
+                                placeholder = stringResource(R.string.putaway_placeholder_location),
                                 onOpen = { pickerOpenForLine = index },
                             )
                             OutlinedTextField(
@@ -412,9 +446,9 @@ fun PutawayScreen(
                             )
                         }
                         SearchablePickerField(
-                            label = "RFID confirm location",
+                            label = stringResource(R.string.putaway_label_rfid_location),
                             selected = rfidLocation,
-                            placeholder = "Choose location for scan confirm",
+                            placeholder = stringResource(R.string.putaway_placeholder_rfid_location),
                             onOpen = { rfidPickerOpen = true },
                             onClear = { rfidLocation = null },
                         )
@@ -440,25 +474,25 @@ fun PutawayScreen(
                         onClear = { container.rfidManager.clearScannedTags() },
                     )
                     if (canEditTask) {
-                    ErpPrimaryButton(text = "RFID confirm at location", onClick = {
+                    ErpPrimaryButton(text = stringResource(R.string.putaway_btn_rfid_confirm), onClick = {
                         scope.launchWorkflow(
                             onError = { message = it },
                             onSuccess = { message = it },
                         ) {
                             val epcs = tags.map { it.epc }
-                            if (epcs.isEmpty()) error("Scan tags first")
+                            if (epcs.isEmpty()) error(errScanTagsFirst)
                             val res = container.api.putawayRfidConfirm(
                                 taskId,
                                 PutawayConfirmRequest(epcs, rfidLocation?.id, UUID.randomUUID().toString()),
                             )
                             if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                             queueReads(container, "putaway", epcs)
-                            res.body()?.message ?: "Confirmed"
+                            res.body()?.message ?: msgConfirmed
                         }
                     })
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ErpPrimaryButton(
-                            text = "Save",
+                            text = stringResource(R.string.putaway_btn_save),
                             modifier = Modifier.weight(1f),
                             loading = actionLoading,
                             onClick = {
@@ -488,12 +522,12 @@ fun PutawayScreen(
                                     if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res, authenticated = true))
                                     applyTask(WorkflowJson.envelopeObject(res))
                                     container.workflowDraftStore.clear("putaway_lines_$taskId")
-                                    "Putaway saved"
+                                    msgPutawaySaved
                                 }
                             },
                         )
                         ErpPrimaryButton(
-                            text = "Complete",
+                            text = stringResource(R.string.putaway_btn_complete),
                             modifier = Modifier.weight(1f),
                             loading = actionLoading,
                             onClick = {
@@ -524,7 +558,7 @@ fun PutawayScreen(
                                     container.workflowDraftStore.clear("putaway_lines_$taskId")
                                     step = PutawayStep.List
                                     liveList.refresh()
-                                    "Putaway completed"
+                                    msgPutawayCompleted
                                 }
                             },
                         )
@@ -538,7 +572,7 @@ fun PutawayScreen(
 
     SearchablePickerSheet(
         visible = pickerOpenForLine >= 0,
-        title = "Storage location",
+        title = stringResource(R.string.putaway_label_storage_location),
         options = locationOptions,
         onDismiss = { pickerOpenForLine = -1 },
         onSelect = { option ->
@@ -548,14 +582,14 @@ fun PutawayScreen(
                 lineEdits[idx] = line.copy(locationId = option.id, locationLabel = option.title)
             }
         },
-        searchHint = "Search zone, aisle, rack…",
+        searchHint = stringResource(R.string.putaway_picker_search_location),
     )
     SearchablePickerSheet(
         visible = rfidPickerOpen,
-        title = "RFID confirm location",
+        title = stringResource(R.string.putaway_label_rfid_location),
         options = locationOptions,
         onDismiss = { rfidPickerOpen = false },
         onSelect = { rfidLocation = it },
-        searchHint = "Search location…",
+        searchHint = stringResource(R.string.putaway_picker_search_rfid_location),
     )
 }

@@ -12,7 +12,6 @@ import com.erpcomplete.rfid.sync.SyncRepository
 import com.erpcomplete.rfid.util.AppLog
 import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -25,6 +24,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.net.ssl.HttpsURLConnection
 
 class AppContainer(context: Context) {
 
@@ -32,7 +32,6 @@ class AppContainer(context: Context) {
 
     val authStore = AuthStore(appContext)
     val sessionCache = SessionCache(authStore)
-    val apiSettingsStore = ApiSettingsStore(appContext)
     val localeSettingsStore = LocaleSettingsStore(appContext)
     val workflowDraftStore = WorkflowDraftStore(appContext)
 
@@ -45,27 +44,25 @@ class AppContainer(context: Context) {
 
     private val isRefreshing = AtomicBoolean(false)
 
-    private val baseUrlInterceptor = Interceptor { chain ->
+    /** VPS is reached by IPv4; TLS cert may list the cloud hostname. */
+    private val hostnameVerifier = javax.net.ssl.HostnameVerifier { hostname, session ->
+        hostname == "187.77.125.241" ||
+            HttpsURLConnection.getDefaultHostnameVerifier().verify(hostname, session)
+    }
+
+    private val apiBaseUrl: String
+        get() = BuildConfig.API_BASE_URL.trimEnd('/')
+
+    private val nginxHostInterceptor = Interceptor { chain ->
         val request = chain.request()
-        val configured = apiSettingsStore.baseUrlBlocking().trimEnd('/')
-        val default = BuildConfig.API_BASE_URL.trimEnd('/')
-        if (configured == default) {
-            chain.proceed(request)
+        if (request.url.host == "187.77.125.241") {
+            chain.proceed(
+                request.newBuilder()
+                    .header("Host", BuildConfig.NGINX_HOST)
+                    .build(),
+            )
         } else {
-            val overrideBase = configured.toHttpUrlOrNull()
-            if (overrideBase == null) {
-                chain.proceed(request)
-            } else {
-                val path = request.url.encodedPath
-                val suffix = path.removePrefix(overrideBase.encodedPath).ifBlank { path }
-                val newUrl = overrideBase.newBuilder()
-                    .encodedPath(
-                        overrideBase.encodedPath.trimEnd('/') + suffix,
-                    )
-                    .query(request.url.query)
-                    .build()
-                chain.proceed(request.newBuilder().url(newUrl).build())
-            }
+            chain.proceed(request)
         }
     }
 
@@ -98,8 +95,9 @@ class AppContainer(context: Context) {
             val refreshResponse = runBlocking {
                 refreshClient.newCall(
                     Request.Builder()
-                        .url("${apiSettingsStore.baseUrlBlocking().trimEnd('/')}/auth/refresh")
+                        .url("$apiBaseUrl/auth/refresh")
                         .post("".toRequestBody(null))
+                        .header("Host", BuildConfig.NGINX_HOST)
                         .header("Authorization", "Bearer $token")
                         .header("Accept", "application/json")
                         .build(),
@@ -125,13 +123,16 @@ class AppContainer(context: Context) {
     private val refreshClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
+        .hostnameVerifier(hostnameVerifier)
+        .addInterceptor(nginxHostInterceptor)
         .build()
 
     private val okHttp = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
+        .hostnameVerifier(hostnameVerifier)
         .authenticator(tokenAuthenticator)
-        .addInterceptor(baseUrlInterceptor)
+        .addInterceptor(nginxHostInterceptor)
         .addInterceptor(authInterceptor)
         .apply {
             if (BuildConfig.DEBUG) {
@@ -154,13 +155,34 @@ class AppContainer(context: Context) {
         dao = database.pendingSyncDao(),
         api = api,
         networkMonitor = networkSyncMonitor,
-        baseUrlProvider = { apiSettingsStore.baseUrlBlocking() },
+        baseUrlProvider = { apiBaseUrl },
         sessionCache = sessionCache,
     )
     val workflowApi = WorkflowApiHelper(api, syncRepository, networkSyncMonitor)
     val rfidSettingsStore = RfidSettingsStore(appContext)
+    val notificationSettingsStore = NotificationSettingsStore(appContext)
     val zebraFirmwareRepository = ZebraFirmwareRepository(appContext, api)
     val rfidManager = RfidManager(appContext, rfidSettingsStore, zebraFirmwareRepository)
+
+    /** Rotate API token on cold start / app resume (same as Messenger). */
+    suspend fun ensureValidSession(): Boolean {
+        if (sessionCache.accessToken.isNullOrBlank()) return false
+        return try {
+            val response = api.refreshToken()
+            if (response.isSuccessful) {
+                val newToken = response.body()?.access_token
+                if (newToken.isNullOrBlank()) return false
+                authStore.updateAccessToken(newToken)
+                sessionCache.updateToken(newToken)
+                true
+            } else {
+                if (response.code() == 401) authStore.clear()
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     /** Reload ERP page permissions for mobile inventory (requires workspace headers when set). */
     suspend fun refreshMobilePermissions(): Boolean {

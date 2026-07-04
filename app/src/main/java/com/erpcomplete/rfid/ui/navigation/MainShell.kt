@@ -38,11 +38,26 @@ import com.erpcomplete.rfid.ui.screens.SearchScreen
 import com.erpcomplete.rfid.ui.screens.SettingsScreen
 
 @Composable
-fun MainShell(container: AppContainer, rootNavController: NavHostController) {
+fun MainShell(
+    container: AppContainer,
+    rootNavController: NavHostController,
+    openRoute: String? = null,
+) {
     val innerNav = rememberNavController()
     val backStack by innerNav.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val selectedTab = TabNavigation.tabItemForDestination(currentRoute)
+
+    LaunchedEffect(openRoute) {
+        when (openRoute) {
+            com.erpcomplete.rfid.notify.WarehouseNotificationHelper.ROUTE_RECEIVE ->
+                innerNav.navigate(Routes.RECEIVE) { launchSingleTop = true }
+            com.erpcomplete.rfid.notify.WarehouseNotificationHelper.ROUTE_PUTAWAY ->
+                innerNav.navigate(Routes.PUTAWAY) { launchSingleTop = true }
+            com.erpcomplete.rfid.notify.WarehouseNotificationHelper.ROUTE_PICK ->
+                innerNav.navigate(Routes.PICK) { launchSingleTop = true }
+        }
+    }
 
     LaunchedEffect(currentRoute) {
         container.rfidManager.setScanSession(scanSessionForRoute(currentRoute))

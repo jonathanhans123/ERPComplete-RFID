@@ -6,6 +6,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.sync.SyncWorker
+import com.erpcomplete.rfid.notify.TaskNotificationWorker
 import com.erpcomplete.rfid.util.ApiErrorParser
 import com.erpcomplete.rfid.util.LocaleHelper
 import com.erpcomplete.rfid.ui.util.UiStrings
@@ -29,6 +30,21 @@ class ErpCompleteRfidApp : Application() {
         LocaleHelper.apply(this, container.localeSettingsStore.languageTagBlocking())
         container.syncRepository.start(appScope)
         scheduleSync()
+        scheduleTaskNotifications()
+    }
+
+    private fun scheduleTaskNotifications() {
+        val request = PeriodicWorkRequestBuilder<TaskNotificationWorker>(15, TimeUnit.MINUTES).build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            TaskNotificationWorker.UNIQUE_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request,
+        )
+    }
+
+    fun refreshTaskNotificationWork() {
+        val oneShot = androidx.work.OneTimeWorkRequestBuilder<TaskNotificationWorker>().build()
+        WorkManager.getInstance(this).enqueue(oneShot)
     }
 
     private fun scheduleSync() {

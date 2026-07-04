@@ -701,7 +701,7 @@
         <item quantity="one">%1$d line ready — open Items tab to receive</item>
         <item quantity="other">%1$d lines ready — open Items tab to receive</item>
     </plurals>
-    <string name="error_network_unknown_host">Cannot find server. Check Wi-Fi and API URL in Settings.</string>
+    <string name="error_network_unknown_host">Cannot find server. Check Wi-Fi or mobile data.</string>
     <string name="error_network_connect">Cannot connect to server. Is Laravel running?</string>
     <string name="error_network_timeout">Connection timed out. Check network and firewall.</string>
     <string name="error_network_generic">Network error — connection failed.</string>
@@ -712,7 +712,7 @@
     <string name="error_too_many_attempts">Too many attempts. Wait about a minute, then try again.</string>
     <string name="error_server">Server error (%1$d). Try again later.</string>
     <string name="error_request_failed">Request failed (%1$d).</string>
-    <string name="error_web_page_not_api">Reached a web page instead of the API. Check API URL in Settings.</string>
+    <string name="error_web_page_not_api">Reached a web page instead of the API. Contact your administrator.</string>
     <string name="error_something_wrong">Something went wrong</string>
     <string name="pairing_camera_permission">Camera permission is required to scan the reader QR code.</string>
     <string name="pairing_connecting">Connecting to reader…</string>

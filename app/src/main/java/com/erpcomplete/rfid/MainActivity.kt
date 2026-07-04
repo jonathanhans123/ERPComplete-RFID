@@ -10,14 +10,23 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.erpcomplete.rfid.notify.WarehouseNotificationHelper
 import com.erpcomplete.rfid.ui.navigation.AppNavHost
 import com.erpcomplete.rfid.ui.navigation.Routes
 import com.erpcomplete.rfid.ui.theme.ERPCompleteRfidTheme
@@ -39,10 +48,12 @@ class MainActivity : ComponentActivity() {
 
         val container = (application as ErpCompleteRfidApp).container
 
+        val initialOpenRoute = intent?.getStringExtra(WarehouseNotificationHelper.EXTRA_OPEN_ROUTE)
         setContent {
             val session = remember(container) { container.authStore.readSessionSnapshot() }
             val navController = rememberNavController()
             val backStackEntry by navController.currentBackStackEntryAsState()
+            var openRoute by remember { mutableStateOf(initialOpenRoute) }
 
             val loggedIn by container.authStore.isLoggedIn.collectAsState(initial = session.loggedIn)
             val hasWorkspace by container.authStore.hasWorkspaceSelected.collectAsState(initial = session.hasWorkspace)
@@ -53,6 +64,24 @@ class MainActivity : ComponentActivity() {
                     !session.hasWorkspace -> Routes.WORKSPACE
                     else -> Routes.MAIN
                 }
+            }
+
+            LaunchedEffect(loggedIn) {
+                if (loggedIn) {
+                    container.ensureValidSession()
+                }
+            }
+
+            val lifecycleOwner = LocalLifecycleOwner.current
+            val scope = rememberCoroutineScope()
+            DisposableEffect(lifecycleOwner, loggedIn) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME && loggedIn) {
+                        scope.launch { container.ensureValidSession() }
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
             }
 
             LaunchedEffect(loggedIn, hasWorkspace, backStackEntry?.destination?.route) {
@@ -75,7 +104,11 @@ class MainActivity : ComponentActivity() {
                         navController = navController,
                         container = container,
                         startDestination = startDestination,
+                        openRoute = openRoute,
                     )
+                    LaunchedEffect(openRoute) {
+                        if (openRoute != null) openRoute = null
+                    }
                 }
             }
         }
@@ -88,6 +121,9 @@ class MainActivity : ComponentActivity() {
     private fun requestRuntimePermissions(onGranted: () -> Unit) {
         val permissions = buildList {
             add(Manifest.permission.CAMERA)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 add(Manifest.permission.BLUETOOTH_CONNECT)
                 add(Manifest.permission.BLUETOOTH_SCAN)

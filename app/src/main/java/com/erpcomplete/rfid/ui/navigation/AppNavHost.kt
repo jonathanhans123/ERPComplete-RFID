@@ -13,6 +13,7 @@ fun AppNavHost(
     navController: NavHostController,
     container: AppContainer,
     startDestination: String,
+    openRoute: String? = null,
 ) {
     NavHost(navController = navController, startDestination = startDestination) {
         composable(Routes.LOGIN) {
@@ -36,7 +37,7 @@ fun AppNavHost(
             )
         }
         composable(Routes.MAIN) {
-            MainShell(container = container, rootNavController = navController)
+            MainShell(container = container, rootNavController = navController, openRoute = openRoute)
         }
     }
 }

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -96,13 +97,12 @@ fun SettingsScreen(
     val isConnected by container.rfidManager.isDeviceConnected.collectAsState()
     val firmwareUpdate by container.rfidManager.firmwareUpdate.collectAsState()
     val autoFirmwareCheck by container.rfidSettingsStore.autoFirmwareCheck.collectAsState(initial = true)
-    val apiBaseUrl by container.apiSettingsStore.baseUrl.collectAsState(initial = BuildConfig.API_BASE_URL)
     val failedSync by container.syncRepository.failedItems.collectAsState()
     val pendingSync by container.syncRepository.pendingCount.collectAsState()
     val languageTag by container.localeSettingsStore.languageTag.collectAsState(initial = LocaleSettingsStore.SYSTEM)
+    val taskAlertsEnabled by container.notificationSettingsStore.taskAlertsEnabled.collectAsState(initial = true)
 
     var prefixDraft by remember { mutableStateOf(companyPrefix.orEmpty()) }
-    var apiUrlDraft by remember { mutableStateOf(apiBaseUrl) }
     var voidEpc by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
     var confirmWorkspaceChange by remember { mutableStateOf(false) }
@@ -112,10 +112,6 @@ fun SettingsScreen(
 
     LaunchedEffect(companyPrefix) {
         prefixDraft = companyPrefix.orEmpty()
-    }
-
-    LaunchedEffect(apiBaseUrl) {
-        apiUrlDraft = apiBaseUrl
     }
 
     LaunchedEffect(isConnected) {
@@ -230,6 +226,29 @@ fun SettingsScreen(
                         },
                     )
                 }
+            }
+
+            SettingsSectionLabel(stringResource(R.string.settings_section_notifications))
+
+            ErpCard {
+                SettingsCardHeader(
+                    icon = Icons.Default.Notifications,
+                    title = stringResource(R.string.settings_task_alerts_title),
+                    subtitle = stringResource(R.string.settings_task_alerts_subtitle),
+                )
+                Spacer(Modifier.height(10.dp))
+                SettingsToggleRow(
+                    label = stringResource(R.string.settings_task_alerts_title),
+                    checked = taskAlertsEnabled,
+                    onCheckedChange = { enabled ->
+                        scope.launch {
+                            container.notificationSettingsStore.setTaskAlertsEnabled(enabled)
+                            if (enabled) {
+                                (context.applicationContext as? com.erpcomplete.rfid.ErpCompleteRfidApp)?.refreshTaskNotificationWork()
+                            }
+                        }
+                    },
+                )
             }
 
             SettingsSectionLabel(stringResource(R.string.settings_section_rfid))
@@ -450,31 +469,6 @@ fun SettingsScreen(
                 body = stringResource(R.string.settings_firmware_notes_body),
             )
 
-            SettingsSectionLabel(stringResource(R.string.settings_section_server))
-
-            ErpCard {
-                OutlinedTextField(
-                    value = apiUrlDraft,
-                    onValueChange = { apiUrlDraft = it },
-                    label = { Text(stringResource(R.string.settings_api_url_label)) },
-                    supportingText = { Text(stringResource(R.string.settings_api_url_default, BuildConfig.API_BASE_URL)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                if (apiUrlDraft.trimEnd('/') != apiBaseUrl.trimEnd('/')) {
-                    Spacer(Modifier.height(8.dp))
-                    ErpPrimaryButton(
-                        text = stringResource(R.string.settings_save_api_url),
-                        onClick = {
-                            scope.launch {
-                                container.apiSettingsStore.setBaseUrl(apiUrlDraft)
-                                message = context.getString(R.string.settings_api_url_saved)
-                            }
-                        },
-                    )
-                }
-            }
-
             SettingsSectionLabel(stringResource(R.string.settings_section_sync))
 
             ErpCard {
@@ -568,14 +562,6 @@ fun SettingsScreen(
                 Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                apiBaseUrl,
-                Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.labelSmall,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.outline,
                 textAlign = TextAlign.Center,
             )
         }

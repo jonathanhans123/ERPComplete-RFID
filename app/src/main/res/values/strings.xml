@@ -101,6 +101,19 @@
     <string name="settings_sign_out">Sign out</string>
     <string name="settings_version">ERPComplete RFID %1$s</string>
 
+    <!-- Task notifications -->
+    <string name="settings_section_notifications">Notifications</string>
+    <string name="settings_task_alerts_title">Warehouse task alerts</string>
+    <string name="settings_task_alerts_subtitle">Notify when new goods receipts, putaway, or pick lists appear</string>
+    <string name="notify_channel_tasks">Warehouse tasks</string>
+    <string name="notify_channel_tasks_desc">Alerts for new receiving, putaway, and pick work</string>
+    <string name="notify_new_receipts_title">New goods receipts</string>
+    <string name="notify_new_receipts_body">%1$d open receipt(s) waiting</string>
+    <string name="notify_new_putaway_title">New putaway tasks</string>
+    <string name="notify_new_putaway_body">%1$d putaway task(s) open</string>
+    <string name="notify_new_pick_title">New pick lists</string>
+    <string name="notify_new_pick_body">%1$d pick list(s) open</string>
+
     <!-- Diagnostics labels -->
     <string name="diag_reader">Reader</string>
     <string name="diag_model">Model</string>

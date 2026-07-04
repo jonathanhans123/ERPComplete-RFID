@@ -101,6 +101,19 @@
     <string name="settings_sign_out">Keluar</string>
     <string name="settings_version">ERPComplete RFID %1$s</string>
 
+    <!-- Task notifications -->
+    <string name="settings_section_notifications">Notifikasi</string>
+    <string name="settings_task_alerts_title">Peringatan tugas gudang</string>
+    <string name="settings_task_alerts_subtitle">Beritahu saat ada penerimaan, putaway, atau pick list baru</string>
+    <string name="notify_channel_tasks">Tugas gudang</string>
+    <string name="notify_channel_tasks_desc">Peringatan penerimaan, putaway, dan pick baru</string>
+    <string name="notify_new_receipts_title">Penerimaan barang baru</string>
+    <string name="notify_new_receipts_body">%1$d penerimaan menunggu</string>
+    <string name="notify_new_putaway_title">Tugas putaway baru</string>
+    <string name="notify_new_putaway_body">%1$d tugas putaway terbuka</string>
+    <string name="notify_new_pick_title">Pick list baru</string>
+    <string name="notify_new_pick_body">%1$d pick list terbuka</string>
+
     <!-- Diagnostics labels -->
     <string name="diag_reader">Pembaca</string>
     <string name="diag_model">Model</string>

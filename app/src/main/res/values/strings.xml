@@ -32,6 +32,11 @@
     <string name="login_show_password">Show password</string>
     <string name="login_hide_password">Hide password</string>
     <string name="login_sign_in">Sign in</string>
+    <string name="login_two_factor_title">Two-factor authentication</string>
+    <string name="login_two_factor_subtitle">Enter the 6-digit code from your authenticator app for %1$s</string>
+    <string name="login_two_factor_code">Authentication code</string>
+    <string name="login_two_factor_verify">Verify</string>
+    <string name="login_two_factor_back">Back to sign in</string>
     <string name="login_no_business_unit">No business unit assigned to this account.</string>
     <string name="login_no_warehouse">No warehouse assigned to this account.</string>
     <string name="login_api_debug">API: %1$s</string>

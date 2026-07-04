@@ -17,7 +17,6 @@ android {
         versionName = "0.1.0"
 
         buildConfigField("String", "API_BASE_URL", "\"https://187.77.125.241/api/v1\"")
-        buildConfigField("String", "NGINX_HOST", "\"srv1804550.hstgr.cloud\"")
     }
 
     flavorDimensions += "target"

@@ -41,7 +41,16 @@ object ApiErrorParser {
         422 -> parseBody(response) ?: ctx().getString(R.string.error_check_input)
         429 -> ctx().getString(R.string.error_too_many_attempts)
         in 500..599 -> ctx().getString(R.string.error_server, response.code())
+        403 -> parseBody(response) ?: ctx().getString(R.string.error_request_failed, response.code())
         else -> parseBody(response) ?: ctx().getString(R.string.error_request_failed, response.code())
+    }
+
+    fun isTwoFactorRequired(response: Response<*>): Boolean {
+        if (response.code() != 403) return false
+        val raw = runCatching { response.errorBody()?.string() }.getOrNull() ?: return false
+        return runCatching {
+            gson.fromJson(raw, JsonObject::class.java).get("two_factor_required")?.asBoolean == true
+        }.getOrNull() == true
     }
 
     private fun parseBody(response: Response<*>): String? {

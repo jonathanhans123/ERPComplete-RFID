@@ -369,7 +369,11 @@ data class VoidTagRequest(
     val reason: String? = null,
 )
 
-data class LoginRequest(val email: String, val password: String)
+data class LoginRequest(
+    val email: String,
+    val password: String,
+    val two_factor_code: String? = null,
+)
 
 data class LoginUser(
     val id: Long?,

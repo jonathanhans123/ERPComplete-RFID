@@ -32,6 +32,11 @@
     <string name="login_show_password">Tampilkan kata sandi</string>
     <string name="login_hide_password">Sembunyikan kata sandi</string>
     <string name="login_sign_in">Masuk</string>
+    <string name="login_two_factor_title">Autentikasi dua faktor</string>
+    <string name="login_two_factor_subtitle">Masukkan kode 6 digit dari aplikasi autentikator untuk %1$s</string>
+    <string name="login_two_factor_code">Kode autentikasi</string>
+    <string name="login_two_factor_verify">Verifikasi</string>
+    <string name="login_two_factor_back">Kembali ke masuk</string>
     <string name="login_no_business_unit">Tidak ada unit bisnis yang ditetapkan untuk akun ini.</string>
     <string name="login_no_warehouse">Tidak ada gudang yang ditetapkan untuk akun ini.</string>
     <string name="login_api_debug">API: %1$s</string>

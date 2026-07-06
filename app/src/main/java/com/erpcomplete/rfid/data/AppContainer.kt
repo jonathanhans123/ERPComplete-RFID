@@ -161,6 +161,7 @@ class AppContainer(context: Context) {
     val workflowApi = WorkflowApiHelper(api, syncRepository, networkSyncMonitor)
     val rfidSettingsStore = RfidSettingsStore(appContext)
     val notificationSettingsStore = NotificationSettingsStore(appContext)
+    val backgroundReliabilityStore = BackgroundReliabilityStore(appContext)
     val zebraFirmwareRepository = ZebraFirmwareRepository(appContext, api)
     val rfidManager = RfidManager(appContext, rfidSettingsStore, zebraFirmwareRepository)
 

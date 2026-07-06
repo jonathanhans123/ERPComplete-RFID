@@ -27,6 +27,9 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.erpcomplete.rfid.notify.WarehouseNotificationHelper
+import com.erpcomplete.rfid.ui.components.BackgroundReliabilityDialog
+import com.erpcomplete.rfid.ui.components.BackgroundReliabilityManualDialog
+import com.erpcomplete.rfid.util.BackgroundReliabilityHelper
 import com.erpcomplete.rfid.ui.navigation.AppNavHost
 import com.erpcomplete.rfid.ui.navigation.Routes
 import com.erpcomplete.rfid.ui.theme.ERPCompleteRfidTheme
@@ -54,6 +57,9 @@ class MainActivity : ComponentActivity() {
             val navController = rememberNavController()
             val backStackEntry by navController.currentBackStackEntryAsState()
             var openRoute by remember { mutableStateOf(initialOpenRoute) }
+            var showBgReliability by remember { mutableStateOf(false) }
+            var showBgManual by remember { mutableStateOf(false) }
+            val context = this@MainActivity
 
             val loggedIn by container.authStore.isLoggedIn.collectAsState(initial = session.loggedIn)
             val hasWorkspace by container.authStore.hasWorkspaceSelected.collectAsState(initial = session.hasWorkspace)
@@ -66,6 +72,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            LaunchedEffect(loggedIn, hasWorkspace) {
+                if (loggedIn && hasWorkspace) {
+                    val exempt = BackgroundReliabilityHelper.isIgnoringBatteryOptimizations(context)
+                    if (!exempt && container.backgroundReliabilityStore.shouldPrompt()) {
+                        showBgReliability = true
+                    }
+                }
+            }
+
             LaunchedEffect(loggedIn) {
                 if (loggedIn) {
                     container.ensureValidSession()
@@ -74,10 +89,19 @@ class MainActivity : ComponentActivity() {
 
             val lifecycleOwner = LocalLifecycleOwner.current
             val scope = rememberCoroutineScope()
-            DisposableEffect(lifecycleOwner, loggedIn) {
+            DisposableEffect(lifecycleOwner, loggedIn, hasWorkspace) {
                 val observer = LifecycleEventObserver { _, event ->
                     if (event == Lifecycle.Event.ON_RESUME && loggedIn) {
                         scope.launch { container.ensureValidSession() }
+                        if (hasWorkspace) {
+                            val exempt = BackgroundReliabilityHelper.isIgnoringBatteryOptimizations(context)
+                            if (exempt) {
+                                showBgReliability = false
+                                showBgManual = false
+                            } else if (container.backgroundReliabilityStore.shouldPromptBlocking()) {
+                                showBgReliability = true
+                            }
+                        }
                     }
                 }
                 lifecycleOwner.lifecycle.addObserver(observer)
@@ -110,6 +134,20 @@ class MainActivity : ComponentActivity() {
                         if (openRoute != null) openRoute = null
                     }
                 }
+            }
+
+            if (showBgReliability) {
+                BackgroundReliabilityDialog(
+                    store = container.backgroundReliabilityStore,
+                    onDismiss = { showBgReliability = false },
+                    onOpenManualSteps = {
+                        showBgReliability = false
+                        showBgManual = true
+                    },
+                )
+            }
+            if (showBgManual) {
+                BackgroundReliabilityManualDialog(onDismiss = { showBgManual = false })
             }
         }
 

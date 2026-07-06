@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.FilterAlt
@@ -67,6 +68,7 @@ import androidx.navigation.NavHostController
 import com.erpcomplete.rfid.BuildConfig
 import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.data.LocaleSettingsStore
+import com.erpcomplete.rfid.util.BackgroundReliabilityHelper
 import com.erpcomplete.rfid.data.ScanProfile
 import com.erpcomplete.rfid.rfid.ReaderDiagnostics
 import com.erpcomplete.rfid.rfid.FirmwareUpdateState
@@ -108,6 +110,9 @@ fun SettingsScreen(
     var confirmWorkspaceChange by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    var bgUnrestricted by remember {
+        mutableStateOf(BackgroundReliabilityHelper.isIgnoringBatteryOptimizations(context))
+    }
     val prefixDirty = prefixDraft != companyPrefix.orEmpty()
 
     LaunchedEffect(companyPrefix) {
@@ -248,6 +253,31 @@ fun SettingsScreen(
                             }
                         }
                     },
+                )
+            }
+
+            ErpCard(onClick = {
+                if (bgUnrestricted) {
+                    BackgroundReliabilityHelper.openAppDetails(context)
+                } else {
+                    val activity = context as? Activity
+                    val granted = activity?.let { BackgroundReliabilityHelper.requestExemption(it) } ?: false
+                    if (!granted && !BackgroundReliabilityHelper.isIgnoringBatteryOptimizations(context)) {
+                        message = context.getString(R.string.bg_reliability_manual_steps)
+                    }
+                }
+                bgUnrestricted = BackgroundReliabilityHelper.isIgnoringBatteryOptimizations(context)
+            }) {
+                SettingsCardHeader(
+                    icon = Icons.Default.BatteryChargingFull,
+                    title = stringResource(R.string.settings_bg_reliability_title),
+                    subtitle = stringResource(
+                        if (bgUnrestricted) {
+                            R.string.settings_bg_reliability_subtitle_ok
+                        } else {
+                            R.string.settings_bg_reliability_subtitle_restricted
+                        },
+                    ),
                 )
             }
 

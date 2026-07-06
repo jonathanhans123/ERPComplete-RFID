@@ -715,6 +715,7 @@
     <string name="error_web_page_not_api">Mencapai halaman web, bukan API. Periksa URL API di Pengaturan.</string>
     <string name="error_something_wrong">Terjadi kesalahan</string>
     <string name="pairing_camera_permission">Izin kamera diperlukan untuk memindai kode QR pembaca.</string>
+    <string name="pairing_camera_grant">Izinkan kamera</string>
     <string name="pairing_connecting">Menghubungkan ke pembaca…</string>
     <string name="scan_resolve_roll_prefix">roll %1$s</string>
     <string name="scan_resolve_roll_marker">(roll)</string>
@@ -774,4 +775,14 @@
     <string name="locate_getting_warmer">Semakin dekat</string>
     <string name="locate_weak_signal">Sinyal lemah — terus sapu</string>
     <string name="locate_no_signal">Tidak ada sinyal — bergerak dan sapu</string>
+    <string name="bg_reliability_title">Izinkan operasi latar belakang</string>
+    <string name="bg_reliability_message">ERPComplete RFID perlu berjalan di latar belakang untuk peringatan tugas gudang dan sinkronisasi.\n\nDi layar berikutnya, ketuk Izinkan. Jika tidak ada opsi itu, buka Info aplikasi → Baterai dan atur Penghemat baterai ke Tanpa batasan.</string>
+    <string name="bg_reliability_allow">Izinkan</string>
+    <string name="bg_reliability_later">Nanti</string>
+    <string name="bg_reliability_manual_title">Atur baterai ke Tanpa batasan</string>
+    <string name="bg_reliability_manual_steps">Buka Info aplikasi → Baterai dan atur Penghemat baterai ke Tanpa batasan.\n\nDi Samsung, Xiaomi, Oppo, atau Vivo, aktifkan juga Autostart / Jalankan di latar belakang.</string>
+    <string name="bg_reliability_open_app_info">Buka Info aplikasi</string>
+    <string name="settings_bg_reliability_title">Latar belakang &amp; baterai</string>
+    <string name="settings_bg_reliability_subtitle_ok">Tanpa batasan — sinkronisasi dan peringatan aktif</string>
+    <string name="settings_bg_reliability_subtitle_restricted">Terbatas — atur Penghemat baterai ke Tanpa batasan</string>
 </resources>

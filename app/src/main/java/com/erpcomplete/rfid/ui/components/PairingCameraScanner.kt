@@ -37,8 +37,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.erpcomplete.rfid.util.PhoneBluetooth
+import com.erpcomplete.rfid.rfid.PairingBarcodeParser
 import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 
@@ -57,6 +57,7 @@ fun PairingCameraScanner(
     modifier: Modifier = Modifier,
     scanMode: PairingScanMode = PairingScanMode.READER_CONNECT,
     onMacCaptured: ((String) -> Unit)? = null,
+    onScanRejected: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -68,6 +69,7 @@ fun PairingCameraScanner(
     }
     var scanned by remember { mutableStateOf(false) }
     var bindGeneration by remember { mutableIntStateOf(0) }
+    var lastRejectedAt by remember { mutableStateOf(0L) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> hasCameraPermission = granted }
@@ -76,6 +78,7 @@ fun PairingCameraScanner(
         if (!isConnecting) {
             scanned = false
             bindGeneration++
+            lastRejectedAt = 0L
         }
     }
 
@@ -98,11 +101,22 @@ fun PairingCameraScanner(
         contentAlignment = Alignment.Center,
     ) {
         if (!hasCameraPermission) {
-            Text(
-                stringResource(R.string.pairing_camera_permission),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            ) {
+                Text(
+                    stringResource(R.string.pairing_camera_permission),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                androidx.compose.material3.TextButton(
+                    onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    Text(stringResource(R.string.pairing_camera_grant))
+                }
+            }
             return
         }
 
@@ -159,6 +173,7 @@ fun PairingCameraScanner(
                             )
                             scanner.process(image)
                                 .addOnSuccessListener { barcodes ->
+                                    var sawCandidate = false
                                     for (barcode in barcodes) {
                                         val value = barcode.rawValue?.trim().orEmpty()
                                         if (value.isBlank()) continue
@@ -172,12 +187,23 @@ fun PairingCameraScanner(
                                                 break
                                             }
                                             PairingScanMode.READER_CONNECT -> {
-                                                if (!isPairingBarcode(barcode, value)) continue
+                                                sawCandidate = true
+                                                if (PairingBarcodeParser.parse(value) == null) continue
                                                 scanned = true
                                                 cameraProvider.unbindAll()
                                                 onBarcodeScanned(value)
                                                 break
                                             }
+                                        }
+                                    }
+                                    if (scanMode == PairingScanMode.READER_CONNECT && sawCandidate && !scanned) {
+                                        val now = System.currentTimeMillis()
+                                        if (now - lastRejectedAt > 2000) {
+                                            lastRejectedAt = now
+                                            val sample = barcodes.firstNotNullOfOrNull {
+                                                it.rawValue?.trim()?.takeIf { v -> v.isNotBlank() }
+                                            } ?: return@addOnSuccessListener
+                                            onScanRejected?.invoke(sample)
                                         }
                                     }
                                 }
@@ -195,17 +221,5 @@ fun PairingCameraScanner(
                 }
             },
         )
-    }
-}
-
-private fun isPairingBarcode(barcode: Barcode, value: String): Boolean {
-    if (value.length < 12) return false
-    return when (barcode.format) {
-        Barcode.FORMAT_CODE_128,
-        Barcode.FORMAT_DATA_MATRIX,
-        Barcode.FORMAT_QR_CODE,
-        Barcode.FORMAT_AZTEC,
-        -> true
-        else -> value.any { it.isLetter() } && value.any { it.isDigit() }
     }
 }

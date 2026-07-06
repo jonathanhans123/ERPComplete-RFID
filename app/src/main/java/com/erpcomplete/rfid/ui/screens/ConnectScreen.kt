@@ -45,15 +45,16 @@ import com.erpcomplete.rfid.data.AppContainer
 import com.erpcomplete.rfid.rfid.RfidConnectionState
 import com.erpcomplete.rfid.ui.components.BluetoothDisabledBanner
 import com.erpcomplete.rfid.ui.components.ErpCard
-import com.erpcomplete.rfid.ui.components.ReaderStatusCard
 import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.MacAddressTextField
 import com.erpcomplete.rfid.ui.components.PairingCameraScanner
 import com.erpcomplete.rfid.ui.components.PairingScanMode
+import com.erpcomplete.rfid.ui.components.ReaderStatusCard
 import com.erpcomplete.rfid.ui.components.StatusBanner
 import com.erpcomplete.rfid.util.BarcodeBitmap
 import com.erpcomplete.rfid.util.PhoneBluetooth
+import com.erpcomplete.rfid.util.PhonePairingBarcode
 import kotlinx.coroutines.launch
 
 private enum class PhoneMacInputSource {
@@ -79,6 +80,7 @@ fun ConnectScreen(container: AppContainer) {
     var showMacCameraScanner by remember { mutableStateOf(false) }
     var macScanError by remember { mutableStateOf<String?>(null) }
     var scanGeneration by remember { mutableIntStateOf(0) }
+    var scanFeedback by remember { mutableStateOf<String?>(null) }
 
     fun applyPhoneMac(mac12: String) {
         phoneMacInput = mac12
@@ -96,6 +98,7 @@ fun ConnectScreen(container: AppContainer) {
     LaunchedEffect(state) {
         if (state is RfidConnectionState.Error) {
             scanGeneration++
+            scanFeedback = (state as RfidConnectionState.Error).message
         }
     }
 
@@ -161,7 +164,11 @@ fun ConnectScreen(container: AppContainer) {
     }
 
     val pairingBarcode = remember(phoneMac) {
-        phoneMac?.let { runCatching { BarcodeBitmap.code128(it, 900, 260) }.getOrNull() }
+        phoneMac?.let {
+            runCatching {
+                BarcodeBitmap.code128(PhonePairingBarcode.payloadForPhoneMac(it), 900, 260)
+            }.getOrNull()
+        }
     }
 
     ErpScaffold(
@@ -206,7 +213,12 @@ fun ConnectScreen(container: AppContainer) {
                     0 -> ScanReaderTab(
                         scanGeneration = scanGeneration,
                         isConnecting = connectionState is RfidConnectionState.Pairing,
-                        onBarcodeScanned = { rfid.connectFromPairingBarcode(it) },
+                        scanFeedback = scanFeedback,
+                        onScanFeedback = { scanFeedback = it },
+                        onBarcodeScanned = { raw ->
+                            scanFeedback = null
+                            rfid.connectFromPairingBarcode(raw)
+                        },
                     )
                     1 -> ShowPhoneBarcodeTab(
                         phoneMacInput = phoneMacInput,
@@ -279,8 +291,11 @@ fun ConnectScreen(container: AppContainer) {
 private fun ScanReaderTab(
     scanGeneration: Int,
     isConnecting: Boolean,
+    scanFeedback: String?,
+    onScanFeedback: (String?) -> Unit,
     onBarcodeScanned: (String) -> Unit,
 ) {
+    val rejectedTemplate = stringResource(R.string.connect_scan_rejected)
     ErpCard {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -296,10 +311,17 @@ private fun ScanReaderTab(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (!scanFeedback.isNullOrBlank()) {
+                StatusBanner(scanFeedback, isError = true)
+            }
             PairingCameraScanner(
                 scanGeneration = scanGeneration,
                 isConnecting = isConnecting,
                 onBarcodeScanned = onBarcodeScanned,
+                onScanRejected = { raw ->
+                    val preview = raw.take(48).let { if (raw.length > it.length) "$it…" else it }
+                    onScanFeedback(rejectedTemplate.format(preview))
+                },
             )
         }
     }
@@ -336,6 +358,18 @@ private fun ShowPhoneBarcodeTab(
                 stringResource(R.string.connect_phone_barcode_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                stringResource(R.string.connect_phone_barcode_steps),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                stringResource(R.string.connect_show_barcode_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.fillMaxWidth(),
             )
 

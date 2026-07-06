@@ -244,9 +244,22 @@ class RfidManager(
     fun finishPhoneBarcodePairing() {
         scope.launch {
             _connectionState.value = RfidConnectionState.Pairing
-            delay(2000)
-            val saved = readerStore.getSavedReader()
-            connectToAvailableReader(saved, attempts = 10)
+            val bonded = withContext(Dispatchers.IO) {
+                BluetoothPairingHelper.waitForBondedRfdReader(appContext, null)
+            }
+            if (bonded == null) {
+                logConnectionError(appContext.getString(R.string.rfid_error_reader_not_bonded))
+                return@launch
+            }
+            readerStore.saveReader(bonded.name ?: "RFD90", bonded.address)
+            delay(1000)
+            connectToAvailableReader(
+                saved = SavedReader(
+                    name = bonded.name ?: "RFD90",
+                    address = bonded.address,
+                ),
+                attempts = 10,
+            )
         }
     }
 

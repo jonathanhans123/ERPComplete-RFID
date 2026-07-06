@@ -193,8 +193,10 @@
     <string name="connect_hardware_bottom_trigger">Bottom trigger — press to start continuous barcode scan; press again to stop.</string>
     <string name="connect_disconnect">Disconnect reader</string>
     <string name="connect_scan_reader_title">Scan the QR / barcode on your RFD90</string>
-    <string name="connect_scan_reader_body">Recommended — no phone Bluetooth address needed. On the reader, open Scan-to-Connect and scan its barcode with this camera.</string>
+    <string name="connect_scan_reader_body">Point this phone camera at the 2D barcode on the RFD90 label (Bluetooth connection sticker). After scan, confirm pairing on the phone if Android asks, and press the upper trigger on the gun within 15 seconds if required.</string>
     <string name="connect_phone_barcode_title">Let the RFD90 scan this phone</string>
+    <string name="connect_phone_barcode_steps">1. Enter this phone\'s Bluetooth address below (Settings → About phone → Status, or manual).\n2. Show the barcode on this screen.\n3. On the RFD90, use Scan-to-Connect and scan THIS screen with the gun (not the phone camera).\n4. Tap \"Reader scanned — connect now\".</string>
+    <string name="connect_scan_rejected">Barcode not recognized as an RFD90 pairing code: %1$s</string>
     <string name="connect_bt_permission_required">Allow Nearby devices / Bluetooth permission so the app can read this phone address automatically.</string>
     <string name="connect_mac_auto_detected">Bluetooth address detected automatically.</string>
     <string name="connect_show_barcode_hint">Show this barcode to the RFD90 Scan-to-Connect scanner.</string>
@@ -715,6 +717,7 @@
     <string name="error_web_page_not_api">Reached a web page instead of the API. Contact your administrator.</string>
     <string name="error_something_wrong">Something went wrong</string>
     <string name="pairing_camera_permission">Camera permission is required to scan the reader QR code.</string>
+    <string name="pairing_camera_grant">Allow camera</string>
     <string name="pairing_connecting">Connecting to reader…</string>
     <string name="scan_resolve_roll_prefix">roll %1$s</string>
     <string name="scan_resolve_roll_marker">(roll)</string>
@@ -730,6 +733,7 @@
     <string name="rfid_error_pairing_failed_permissions">Bluetooth pairing failed. Confirm Bluetooth is on, grant Nearby devices permission, and accept the pairing prompt on the phone.</string>
     <string name="rfid_error_pairing_failed">Pairing failed</string>
     <string name="rfid_error_reader_not_found">Reader not found. On the RFD90 open Scan-to-Connect, complete pairing, then tap Connect again.</string>
+    <string name="rfid_error_reader_not_bonded">RFD90 is not paired yet. Scan this phone\'s barcode with the gun first, accept the Android pairing prompt, then tap Connect again.</string>
     <string name="rfid_error_invalid_usage">Invalid usage: %1$s</string>
     <string name="rfid_error_connect_failed">Connect failed: %1$s</string>
     <string name="rfid_error_not_connected">Reader not connected</string>
@@ -778,4 +782,15 @@
     <string name="locate_getting_warmer">Getting warmer</string>
     <string name="locate_weak_signal">Weak signal — keep sweeping</string>
     <string name="locate_no_signal">No signal — move and sweep</string>
+    <!-- Background / battery reliability -->
+    <string name="bg_reliability_title">Allow background operation</string>
+    <string name="bg_reliability_message">ERPComplete RFID needs to run in the background for warehouse task alerts and sync.\n\nOn the next screen, tap Allow. If you do not see that option, open App info → Battery and set Battery saver to No restrictions (Unrestricted).</string>
+    <string name="bg_reliability_allow">Allow</string>
+    <string name="bg_reliability_later">Later</string>
+    <string name="bg_reliability_manual_title">Set battery to No restrictions</string>
+    <string name="bg_reliability_manual_steps">Open App info → Battery and set Battery saver to No restrictions (Unrestricted).\n\nOn Samsung, Xiaomi, Oppo, or Vivo phones, also enable Autostart / Run in background for this app.</string>
+    <string name="bg_reliability_open_app_info">Open App info</string>
+    <string name="settings_bg_reliability_title">Background &amp; battery</string>
+    <string name="settings_bg_reliability_subtitle_ok">Unrestricted — sync and alerts can run in background</string>
+    <string name="settings_bg_reliability_subtitle_restricted">Restricted — set Battery saver to No restrictions</string>
 </resources>

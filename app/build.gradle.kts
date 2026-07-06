@@ -13,8 +13,8 @@ android {
         applicationId = "com.erpcomplete.rfid"
         minSdk = 29
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 3
+        versionName = "0.1.2"
 
         buildConfigField("String", "API_BASE_URL", "\"https://187.77.125.241/api/v1\"")
     }

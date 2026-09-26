@@ -728,7 +728,11 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                                     ),
                                 )
                                 if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-                                applyPickList(unwrapPickList(WorkflowJson.envelopeObject(res)))
+                                // Pack & cut is the last step: back to the list (refreshed, so a finished
+                                // pick drops off); the saved message shows there.
+                                container.workflowDraftStore.clear("pick_lines_$pickId")
+                                step = PickStep.List
+                                liveList.refresh()
                                 msgPackCutSaved
                             }
                         })

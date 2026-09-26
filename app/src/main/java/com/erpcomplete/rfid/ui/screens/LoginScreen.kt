@@ -95,6 +95,9 @@ fun LoginScreen(container: AppContainer, onLoginSuccess: (needsWorkspace: Boolea
 
     suspend fun finishLogin(trimmedEmail: String, body: LoginResponse, token: String) {
         val units = body.business_units?.map { it.toOption() } ?: emptyList()
+        // Saving flips loggedIn, which triggers a session check; a token issued this second
+        // must not be rotated while the workspace request below is still using it.
+        container.markTokenFresh(token)
         container.authStore.saveLogin(
             token = token,
             email = trimmedEmail,

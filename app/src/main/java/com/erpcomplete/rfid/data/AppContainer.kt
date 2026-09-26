@@ -11,6 +11,8 @@ import com.erpcomplete.rfid.sync.NetworkSyncMonitor
 import com.erpcomplete.rfid.sync.SyncRepository
 import com.erpcomplete.rfid.util.AppLog
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.Authenticator
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -43,6 +45,26 @@ class AppContainer(context: Context) {
         get() = authStore.deviceUuidBlocking()
 
     private val isRefreshing = AtomicBoolean(false)
+
+    /*
+     * POST auth/refresh revokes the token it was called with. Two refreshes with the same token
+     * therefore race: the loser gets 401 and used to wipe the session (right after sign-in, the
+     * login screen, the loggedIn effect and the ON_RESUME observer all fire at once). So:
+     * refresh one at a time, don't rotate a token that was just issued, and never treat a 401
+     * on a token someone else already rotated as "signed out".
+     */
+    private val sessionMutex = Mutex()
+    @Volatile private var freshToken: String? = null
+    @Volatile private var freshTokenAtMs = 0L
+
+    /** Record a token just issued by login or refresh; it is not rotated again for a while. */
+    fun markTokenFresh(token: String) {
+        freshToken = token
+        freshTokenAtMs = System.currentTimeMillis()
+    }
+
+    private fun isFresh(token: String): Boolean =
+        token == freshToken && System.currentTimeMillis() - freshTokenAtMs < FRESH_TOKEN_WINDOW_MS
 
     /** VPS is reached by IPv4; TLS cert may list the cloud hostname. */
     private val hostnameVerifier = javax.net.ssl.HostnameVerifier { hostname, session ->
@@ -87,8 +109,17 @@ class AppContainer(context: Context) {
 
     private val tokenAuthenticator = Authenticator { _: Route?, response: Response ->
         if (response.code != 401) return@Authenticator null
-        if (response.request.url.encodedPath.contains("auth/login")) return@Authenticator null
+        val path = response.request.url.encodedPath
+        if (path.contains("auth/login") || path.contains("auth/refresh")) return@Authenticator null
         if (responseCount(response) >= 2) return@Authenticator null
+        // Another request already rotated the token: retry with the current one instead of refreshing again.
+        val current = sessionCache.accessToken
+        val sent = response.request.header("Authorization")?.removePrefix("Bearer ")
+        if (!current.isNullOrBlank() && sent != null && sent != current) {
+            return@Authenticator response.request.newBuilder()
+                .header("Authorization", "Bearer $current")
+                .build()
+        }
         if (!isRefreshing.compareAndSet(false, true)) return@Authenticator null
         try {
             val token = sessionCache.accessToken ?: return@Authenticator null
@@ -110,6 +141,7 @@ class AppContainer(context: Context) {
                 .access_token ?: return@Authenticator null
             runBlocking { authStore.updateAccessToken(newToken) }
             sessionCache.updateToken(newToken)
+            markTokenFresh(newToken)
             response.request.newBuilder()
                 .header("Authorization", "Bearer $newToken")
                 .build()
@@ -165,19 +197,24 @@ class AppContainer(context: Context) {
     val zebraFirmwareRepository = ZebraFirmwareRepository(appContext, api)
     val rfidManager = RfidManager(appContext, rfidSettingsStore, zebraFirmwareRepository)
 
-    /** Rotate API token on cold start / app resume (same as Messenger). */
-    suspend fun ensureValidSession(): Boolean {
-        if (sessionCache.accessToken.isNullOrBlank()) return false
-        return try {
+    /** Rotate API token on cold start / app resume (same as Messenger). One refresh at a time. */
+    suspend fun ensureValidSession(): Boolean = sessionMutex.withLock {
+        val token = sessionCache.accessToken
+        if (token.isNullOrBlank()) return@withLock false
+        // Issued moments ago (login, or the caller just ahead of us in the lock): nothing to rotate.
+        if (isFresh(token)) return@withLock true
+        try {
             val response = api.refreshToken()
             if (response.isSuccessful) {
                 val newToken = response.body()?.access_token
-                if (newToken.isNullOrBlank()) return false
+                if (newToken.isNullOrBlank()) return@withLock false
                 authStore.updateAccessToken(newToken)
                 sessionCache.updateToken(newToken)
+                markTokenFresh(newToken)
                 true
             } else {
-                if (response.code() == 401) authStore.clear()
+                // Only a rejection of the token that is still current means the session is over.
+                if (response.code() == 401 && sessionCache.accessToken == token) authStore.clear()
                 false
             }
         } catch (_: Exception) {
@@ -212,6 +249,9 @@ class AppContainer(context: Context) {
     }
 
     companion object {
+        /** A token this new is not rotated again (covers sign-in plus the resume that follows). */
+        private const val FRESH_TOKEN_WINDOW_MS = 60_000L
+
         fun newDeviceUuid(): String = UUID.randomUUID().toString()
     }
 }

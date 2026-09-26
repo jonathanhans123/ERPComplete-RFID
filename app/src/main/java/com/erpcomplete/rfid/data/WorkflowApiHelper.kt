@@ -31,11 +31,24 @@ class WorkflowApiHelper(
             syncRepository.queueRequest(endpoint, method, gson.toJson(body), idempotencyKey)
             throw IOException(UiStrings.savedOfflineSync())
         }
-        val response = online()
-        if (!response.isSuccessful && response.code() in 500..599) {
+        val response = try {
+            online()
+        } catch (e: IOException) {
+            // Never reached the server (dropped connection, timeout): safe to replay later.
+            syncRepository.queueRequest(endpoint, method, gson.toJson(body), idempotencyKey)
+            throw IOException(UiStrings.savedOfflineSync(), e)
+        }
+        // Only gateway/unavailable errors mean the ERP app never handled the request. A 500 is a
+        // real answer (e.g. a validation or posting failure): replaying it just repeats the
+        // failure, and replaying non-idempotent steps like "complete picking" races the retry.
+        if (response.code() in RETRYABLE_STATUS) {
             syncRepository.queueRequest(endpoint, method, gson.toJson(body), idempotencyKey)
             throw IOException(ApiErrorParser.httpMessage(response, authenticated = true))
         }
         return response
+    }
+
+    private companion object {
+        val RETRYABLE_STATUS = setOf(502, 503, 504)
     }
 }

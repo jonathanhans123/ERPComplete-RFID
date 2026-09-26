@@ -25,7 +25,6 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.HttpsURLConnection
 
 class AppContainer(context: Context) {
@@ -44,7 +43,6 @@ class AppContainer(context: Context) {
     val deviceId: String
         get() = authStore.deviceUuidBlocking()
 
-    private val isRefreshing = AtomicBoolean(false)
 
     /*
      * POST auth/refresh revokes the token it was called with. Two refreshes with the same token
@@ -112,44 +110,52 @@ class AppContainer(context: Context) {
         val path = response.request.url.encodedPath
         if (path.contains("auth/login") || path.contains("auth/refresh")) return@Authenticator null
         if (responseCount(response) >= 2) return@Authenticator null
-        // Another request already rotated the token: retry with the current one instead of refreshing again.
-        val current = sessionCache.accessToken
         val sent = response.request.header("Authorization")?.removePrefix("Bearer ")
-        if (!current.isNullOrBlank() && sent != null && sent != current) {
-            return@Authenticator response.request.newBuilder()
-                .header("Authorization", "Bearer $current")
-                .build()
-        }
-        if (!isRefreshing.compareAndSet(false, true)) return@Authenticator null
-        try {
-            val token = sessionCache.accessToken ?: return@Authenticator null
-            val refreshResponse = runBlocking {
-                refreshClient.newCall(
-                    Request.Builder()
-                        .url("$apiBaseUrl/auth/refresh")
-                        .post("".toRequestBody(null))
-                        .header("Host", BuildConfig.NGINX_HOST)
-                        .header("Authorization", "Bearer $token")
-                        .header("Accept", "application/json")
-                        .build(),
-                ).execute()
+        // Same lock as ensureValidSession(): if a refresh is in flight (it revokes the token this
+        // request carried), wait for it and retry with its token instead of refreshing again.
+        runBlocking {
+            sessionMutex.withLock {
+                val current = sessionCache.accessToken
+                if (current.isNullOrBlank()) return@withLock null
+                val token = if (sent != null && sent != current) {
+                    current
+                } else {
+                    refreshWithRefreshClient(current) ?: return@withLock null
+                }
+                response.request.newBuilder()
+                    .header("Authorization", "Bearer $token")
+                    .build()
             }
-            if (!refreshResponse.isSuccessful) return@Authenticator null
-            val body = refreshResponse.body?.string() ?: return@Authenticator null
-            val newToken = com.google.gson.Gson()
-                .fromJson(body, RefreshTokenResponse::class.java)
-                .access_token ?: return@Authenticator null
-            runBlocking { authStore.updateAccessToken(newToken) }
-            sessionCache.updateToken(newToken)
-            markTokenFresh(newToken)
-            response.request.newBuilder()
-                .header("Authorization", "Bearer $newToken")
-                .build()
+        }
+    }
+
+    /** POST auth/refresh outside the main client (no authenticator); returns and stores the new token. */
+    private suspend fun refreshWithRefreshClient(token: String): String? {
+        val newToken = try {
+            refreshClient.newCall(
+                Request.Builder()
+                    .url("$apiBaseUrl/auth/refresh")
+                    .post("".toRequestBody(null))
+                    .header("Host", BuildConfig.NGINX_HOST)
+                    .header("Authorization", "Bearer $token")
+                    .header("Accept", "application/json")
+                    .build(),
+            ).execute().use { r ->
+                val body = r.body?.string()
+                if (!r.isSuccessful || body == null) {
+                    null
+                } else {
+                    com.google.gson.Gson().fromJson(body, RefreshTokenResponse::class.java).access_token
+                }
+            }
         } catch (_: Exception) {
             null
-        } finally {
-            isRefreshing.set(false)
         }
+        if (newToken.isNullOrBlank()) return null
+        authStore.updateAccessToken(newToken)
+        sessionCache.updateToken(newToken)
+        markTokenFresh(newToken)
+        return newToken
     }
 
     private val refreshClient = OkHttpClient.Builder()

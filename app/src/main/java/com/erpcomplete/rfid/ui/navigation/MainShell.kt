@@ -23,6 +23,7 @@ import com.erpcomplete.rfid.util.parseInventoryDeepLink
 import com.erpcomplete.rfid.rfid.scanSessionForRoute
 import com.erpcomplete.rfid.ui.components.ErpBottomBar
 import com.erpcomplete.rfid.ui.components.BluetoothDisabledBanner
+import com.erpcomplete.rfid.ui.screens.ApprovalsScreen
 import com.erpcomplete.rfid.ui.screens.ConnectScreen
 import com.erpcomplete.rfid.ui.screens.CycleCountScreen
 import com.erpcomplete.rfid.ui.screens.StockOpnameScreen
@@ -122,6 +123,7 @@ fun MainShell(
                     composable(Routes.RFID_SESSION) { CycleCountScreen(container) { innerNav.popBackStack() } }
                     composable(Routes.ENCODE) { EncodeScreen(container) { innerNav.popBackStack() } }
                     composable(Routes.LOCATE) { LocateScreen(container) { innerNav.popBackStack() } }
+                    composable(Routes.APPROVALS) { ApprovalsScreen(container) { innerNav.popBackStack() } }
                     composable(
                         route = "${Routes.INVENTORY}?flow={flow}&productId={productId}&variationId={variationId}&locationId={locationId}&currentQty={currentQty}&isRoll={isRoll}&productName={productName}&variationName={variationName}&batchNumber={batchNumber}&rollNumber={rollNumber}&unit={unit}",
                         arguments = listOf(

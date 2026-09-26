@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddLocation
+import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Store
@@ -35,6 +36,7 @@ fun OperationsScreen(navController: NavHostController) {
         Op(Routes.ENCODE, stringResource(R.string.encode_title), stringResource(R.string.op_encode_desc), Icons.Default.QrCode),
         Op(Routes.LOCATE, stringResource(R.string.locate_title), stringResource(R.string.op_locate_desc), Icons.Default.Search),
         Op(Routes.INVENTORY, stringResource(R.string.inventory_title), stringResource(R.string.op_inventory_desc), Icons.Default.Store),
+        Op(Routes.APPROVALS, stringResource(R.string.approvals_title), stringResource(R.string.op_approvals_desc), Icons.Default.FactCheck),
     )
 
     ErpScaffold(

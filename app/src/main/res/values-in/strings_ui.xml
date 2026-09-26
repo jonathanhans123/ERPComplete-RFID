@@ -359,7 +359,7 @@
     <string name="error_enter_roll_number">Masukkan nomor roll untuk produk roll ini.</string>
     <string name="error_new_length_must_differ">Panjang baru harus berbeda dari saat ini.</string>
     <string name="error_new_qty_must_differ">Jumlah baru harus berbeda dari saat ini.</string>
-    <string name="inventory_created_pending_approval">Dibuat menunggu persetujuan: %1$s</string>
+    <string name="inventory_waiting_for_erp_approval">Tersimpan. Menunggu persetujuan di ERPComplete — stok berubah setelah disetujui.</string>
     <string name="inventory_adjustment_fallback_title">Penyesuaian</string>
     <string name="inventory_length_change">Perubahan panjang: %1$s</string>
     <string name="inventory_qty_change">Perubahan jumlah: %1$s</string>
@@ -785,4 +785,17 @@
     <string name="settings_bg_reliability_title">Latar belakang &amp; baterai</string>
     <string name="settings_bg_reliability_subtitle_ok">Tanpa batasan — sinkronisasi dan peringatan aktif</string>
     <string name="settings_bg_reliability_subtitle_restricted">Terbatas — atur Penghemat baterai ke Tanpa batasan</string>
+    <string name="approvals_title">Persetujuan</string>
+    <string name="op_approvals_desc">Setujui atau tolak dokumen gudang yang menunggu Anda</string>
+    <string name="approvals_subtitle">Dokumen gudang yang menunggu persetujuan Anda</string>
+    <string name="approvals_empty">Tidak ada yang menunggu persetujuan Anda.</string>
+    <string name="approvals_requested_by">Diajukan oleh %1$s</string>
+    <string name="approvals_approve_title">Setujui %1$s?</string>
+    <string name="approvals_reject_title">Tolak %1$s?</string>
+    <string name="approvals_notes_label">Catatan (opsional)</string>
+    <string name="approvals_reason_label">Alasan penolakan</string>
+    <string name="approvals_reason_required">Isi alasan penolakan.</string>
+    <string name="approvals_approved">Disetujui.</string>
+    <string name="approvals_rejected">Ditolak.</string>
+    <string name="search_approvals_hint">Cari persetujuan</string>
 </resources>

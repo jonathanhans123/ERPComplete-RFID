@@ -13,10 +13,12 @@ android {
         applicationId = "com.erpcomplete.rfid"
         minSdk = 29
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.1.3"
 
         buildConfigField("String", "API_BASE_URL", "\"https://187.77.125.241/api/v1\"")
+        // Host header for the production VPS (reached by IP); defined here so every flavor compiles.
+        buildConfigField("String", "NGINX_HOST", "\"srv1804550.hstgr.cloud\"")
     }
 
     flavorDimensions += "target"
@@ -28,7 +30,6 @@ android {
         create("device") {
             dimension = "target"
             buildConfigField("String", "API_BASE_URL", "\"https://187.77.125.241/api/v1\"")
-            buildConfigField("String", "NGINX_HOST", "\"srv1804550.hstgr.cloud\"")
         }
     }
 

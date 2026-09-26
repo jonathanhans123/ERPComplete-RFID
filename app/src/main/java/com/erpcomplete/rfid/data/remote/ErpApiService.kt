@@ -275,6 +275,25 @@ interface ErpApiService {
     @POST("stock-adjustments/{id}/reject")
     suspend fun rejectStockAdjustment(@Path("id") id: Long): Response<ApiEnvelope<JsonElement>>
 
+    /** ERP approval requests the signed-in user may approve or reject (eligibility is decided server-side). */
+    @GET("approval-requests/my-approvals")
+    suspend fun listMyApprovals(
+        @Query("approval_type[]") approvalTypes: List<String>,
+        @Query("page") page: Int = 1,
+    ): Response<ApiEnvelope<JsonElement>>
+
+    @POST("approval-requests/{id}/approve")
+    suspend fun approveApprovalRequest(
+        @Path("id") id: Long,
+        @Body body: ApprovalDecisionRequest,
+    ): Response<ApiEnvelope<JsonElement>>
+
+    @POST("approval-requests/{id}/reject")
+    suspend fun rejectApprovalRequest(
+        @Path("id") id: Long,
+        @Body body: ApprovalDecisionRequest,
+    ): Response<ApiEnvelope<JsonElement>>
+
     @GET("inventory/product-stock/{productId}")
     suspend fun getProductStockQuantity(
         @Path("productId") productId: Long,
@@ -423,6 +442,11 @@ data class ApiEnvelope<T>(
     val message: String? = null,
     val data: T? = null,
     val pagination: PaginationMeta? = null,
+)
+
+data class ApprovalDecisionRequest(
+    val approval_notes: String? = null,
+    val rejection_reason: String? = null,
 )
 
 data class ResolveRequest(val epc: String)

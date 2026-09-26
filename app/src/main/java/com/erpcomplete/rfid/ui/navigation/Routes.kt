@@ -19,6 +19,7 @@ object Routes {
     const val ENCODE = "encode"
     const val LOCATE = "locate"
     const val INVENTORY = "inventory"
+    const val APPROVALS = "approvals"
 
     const val TAB_HOME = "tab_home"
     const val TAB_CONNECT = "tab_connect"
@@ -37,6 +38,7 @@ object Routes {
         ENCODE,
         LOCATE,
         INVENTORY,
+        APPROVALS,
     )
 
     fun isBottomNavRoute(route: String?): Boolean =

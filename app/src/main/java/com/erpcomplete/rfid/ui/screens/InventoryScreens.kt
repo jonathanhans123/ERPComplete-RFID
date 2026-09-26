@@ -1,5 +1,6 @@
 package com.erpcomplete.rfid.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -1356,17 +1357,11 @@ private fun AdjustmentFormScreen(
                         )
                         val res = container.api.createStockAdjustment(body)
                         if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-                        val createdId = envelopeObject(res)?.long("id")
-                        if (createdId != null) {
-                            val approveRes = container.api.approveStockAdjustment(createdId)
-                            if (!approveRes.isSuccessful) {
-                                message = context.getString(
-                                    R.string.inventory_created_pending_approval,
-                                    ApiErrorParser.httpMessage(approveRes),
-                                )
-                                onSaved()
-                                return@launchWorkflow null
-                            }
+                        // The server already applies the adjustment when no approval rule matches, or leaves it
+                        // "pending" behind an ERP approval request that only the assigned approvers can clear.
+                        if (envelopeObject(res)?.string("status") == "pending") {
+                            // Toast, not `message`: onSaved() leaves this screen, which would drop the notice.
+                            Toast.makeText(context, R.string.inventory_waiting_for_erp_approval, Toast.LENGTH_LONG).show()
                         }
                         onSaved()
                         null

@@ -1,5 +1,6 @@
 package com.erpcomplete.rfid.ui.screens
 
+import android.widget.Toast
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -431,19 +432,10 @@ internal fun RelocationFormScreen(
                         if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                         val created = envelopeObject(res)
                         val status = created?.string("status")
+                        // Pending means the ERP opened an approval request; the stock moves once it is approved.
                         if (status == "pending") {
-                            val createdId = created.long("id")
-                            if (createdId != null) {
-                                val approveRes = container.api.approveStockRelocation(createdId)
-                                if (!approveRes.isSuccessful) {
-                                    message = context.getString(
-                                        R.string.inventory_created_pending_approval,
-                                        ApiErrorParser.httpMessage(approveRes),
-                                    )
-                                    onSaved()
-                                    return@launchWorkflow null
-                                }
-                            }
+                            // Toast, not `message`: onSaved() leaves this screen, which would drop the notice.
+                            Toast.makeText(context, R.string.inventory_waiting_for_erp_approval, Toast.LENGTH_LONG).show()
                         }
                         onSaved()
                         null

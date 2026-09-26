@@ -361,7 +361,7 @@
     <string name="error_enter_roll_number">Enter the roll number for this roll product.</string>
     <string name="error_new_length_must_differ">New length must differ from current.</string>
     <string name="error_new_qty_must_differ">New quantity must differ from current.</string>
-    <string name="inventory_created_pending_approval">Created pending approval: %1$s</string>
+    <string name="inventory_waiting_for_erp_approval">Saved. Waiting for approval in ERPComplete — stock changes once an approver approves it.</string>
     <string name="inventory_adjustment_fallback_title">Adjustment</string>
     <string name="inventory_length_change">Length change: %1$s</string>
     <string name="inventory_qty_change">Qty change: %1$s</string>
@@ -793,4 +793,17 @@
     <string name="settings_bg_reliability_title">Background &amp; battery</string>
     <string name="settings_bg_reliability_subtitle_ok">Unrestricted — sync and alerts can run in background</string>
     <string name="settings_bg_reliability_subtitle_restricted">Restricted — set Battery saver to No restrictions</string>
+    <string name="approvals_title">Approvals</string>
+    <string name="op_approvals_desc">Approve or reject warehouse documents waiting on you</string>
+    <string name="approvals_subtitle">Warehouse documents waiting for your approval</string>
+    <string name="approvals_empty">Nothing is waiting for your approval.</string>
+    <string name="approvals_requested_by">Requested by %1$s</string>
+    <string name="approvals_approve_title">Approve %1$s?</string>
+    <string name="approvals_reject_title">Reject %1$s?</string>
+    <string name="approvals_notes_label">Notes (optional)</string>
+    <string name="approvals_reason_label">Reason for rejecting</string>
+    <string name="approvals_reason_required">Enter a reason for rejecting.</string>
+    <string name="approvals_approved">Approved.</string>
+    <string name="approvals_rejected">Rejected.</string>
+    <string name="search_approvals_hint">Search approvals</string>
 </resources>

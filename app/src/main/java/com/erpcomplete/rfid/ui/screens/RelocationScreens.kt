@@ -37,6 +37,7 @@ import com.erpcomplete.rfid.data.remote.RelocationRollDataPayload
 import com.erpcomplete.rfid.data.remote.RelocationRollLinePayload
 import com.erpcomplete.rfid.ui.components.ErpCard
 import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
+import com.erpcomplete.rfid.ui.components.QtyField
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.LiveSyncIndicator
 import com.erpcomplete.rfid.ui.components.PickerOption
@@ -379,7 +380,13 @@ internal fun RelocationFormScreen(
                     Text(stringResource(R.string.action_refresh_source_stock))
                 }
             }
-            OutlinedTextField(moveQty, { moveQty = it }, label = { Text(moveLabel) }, modifier = Modifier.fillMaxWidth())
+            QtyField(
+                value = moveQty,
+                onValueChange = { moveQty = it },
+                label = moveLabel,
+                fillValue = sourceQty.toDoubleOrNull(),
+                modifier = Modifier.fillMaxWidth(),
+            )
             OutlinedTextField(reason, { reason = it }, label = { Text(stringResource(R.string.label_reason)) }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(notes, { notes = it }, label = { Text(stringResource(R.string.label_notes)) }, modifier = Modifier.fillMaxWidth())
             ErpPrimaryButton(

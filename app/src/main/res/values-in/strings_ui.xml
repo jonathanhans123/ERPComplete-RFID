@@ -798,4 +798,5 @@
     <string name="approvals_approved">Disetujui.</string>
     <string name="approvals_rejected">Ditolak.</string>
     <string name="search_approvals_hint">Cari persetujuan</string>
+    <string name="action_fill">Penuh</string>
 </resources>

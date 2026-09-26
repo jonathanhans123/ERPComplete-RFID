@@ -32,6 +32,7 @@ import com.erpcomplete.rfid.data.remote.UpdatePickListRequest
 import com.erpcomplete.rfid.data.remote.WorkflowScanRequest
 import com.erpcomplete.rfid.ui.components.DataTableColumn
 import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
+import com.erpcomplete.rfid.ui.components.QtyField
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.IndexColumnSpec
 import com.erpcomplete.rfid.ui.components.JsonIndexListTable
@@ -193,6 +194,9 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
     val lineEdits = remember { mutableStateListOf<PickLineEdit>() }
     var lineHighlights by remember { mutableStateOf<Map<String, ScanMatchStatus>>(emptyMap()) }
     val containerEdits = remember { mutableStateListOf<ContainerPackEdit>() }
+    // Values as last loaded from the server, keyed per editable field; a field whose value
+    // differs from this is an unsaved local edit.
+    val pickBaseline = remember { mutableMapOf<String, String>() }
     var detailTab by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(step, lineEdits.size, lineEdits.map { "${it.itemId}:${it.picked}:${it.packed}" }) {
@@ -230,8 +234,27 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
         },
     )
 
-    fun applyPickList(body: JsonObject?) {
+    /**
+     * Rebuild the editable lines from [body]. With [keepLocalEdits] (the 10 s background refresh),
+     * any field the user changed since the last server load is carried over instead of being
+     * reset to the server value — otherwise unsaved input snapped back to 0 every refresh.
+     */
+    fun applyPickList(body: JsonObject?, keepLocalEdits: Boolean = false) {
         val resolved = unwrapPickList(body)
+        val localEdits = if (keepLocalEdits) {
+            buildMap {
+                lineEdits.forEach { l ->
+                    if (l.picked != pickBaseline["line:${l.itemId}:picked"]) put("line:${l.itemId}:picked", l.picked)
+                    if (l.packed != pickBaseline["line:${l.itemId}:packed"]) put("line:${l.itemId}:packed", l.packed)
+                    if (l.cutLengths != pickBaseline["line:${l.itemId}:cut"]) put("line:${l.itemId}:cut", l.cutLengths)
+                }
+                containerEdits.forEach { c ->
+                    if (c.packed != pickBaseline["ci:${c.containerItemId}:packed"]) put("ci:${c.containerItemId}:packed", c.packed)
+                }
+            }
+        } else {
+            emptyMap()
+        }
         pickList = resolved
         lineEdits.clear()
         containerEdits.clear()
@@ -290,6 +313,27 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                 }
             }
         }
+        pickBaseline.clear()
+        lineEdits.forEach { l ->
+            pickBaseline["line:${l.itemId}:picked"] = l.picked
+            pickBaseline["line:${l.itemId}:packed"] = l.packed
+            pickBaseline["line:${l.itemId}:cut"] = l.cutLengths
+        }
+        containerEdits.forEach { c -> pickBaseline["ci:${c.containerItemId}:packed"] = c.packed }
+        if (localEdits.isNotEmpty()) {
+            lineEdits.forEachIndexed { i, l ->
+                lineEdits[i] = l.copy(
+                    picked = localEdits["line:${l.itemId}:picked"] ?: l.picked,
+                    packed = localEdits["line:${l.itemId}:packed"] ?: l.packed,
+                    cutLengths = localEdits["line:${l.itemId}:cut"] ?: l.cutLengths,
+                )
+            }
+            containerEdits.forEachIndexed { i, c ->
+                localEdits["ci:${c.containerItemId}:packed"]?.let { containerEdits[i] = c.copy(packed = it) }
+            }
+        }
+        // Only an explicit load/save moves to the pack tab; a background refresh never switches tabs.
+        if (keepLocalEdits) return
         val allPicked = lineEdits.all { (it.picked.toDoubleOrNull() ?: 0.0) >= it.requested }
         if (allPicked && lineEdits.isNotEmpty()) detailTab = 1
     }
@@ -343,7 +387,7 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
             if (pickLoading || pickLoadedId != id) continue
             runCatching {
                 val res = container.api.getPickList(id)
-                if (res.isSuccessful) applyPickList(WorkflowJson.envelopeObject(res))
+                if (res.isSuccessful) applyPickList(WorkflowJson.envelopeObject(res), keepLocalEdits = true)
             }
         }
     }
@@ -456,22 +500,19 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                             } else {
                                 labelPickedQty
                             }
-                            OutlinedTextField(
-                                line.picked,
-                                { v -> lineEdits[index] = line.copy(picked = v) },
-                                label = {
-                                    Text(
-                                        stringResource(
-                                            R.string.pick_field_label_product,
-                                            pickLabel,
-                                            buildString {
-                                                append(line.productLabel)
-                                                if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
-                                                line.rollNumber?.let { append(stringResource(R.string.pick_line_roll_suffix, it)) }
-                                            },
-                                        ),
-                                    )
-                                },
+                            QtyField(
+                                value = line.picked,
+                                onValueChange = { v -> lineEdits[index] = line.copy(picked = v) },
+                                label = stringResource(
+                                    R.string.pick_field_label_product,
+                                    pickLabel,
+                                    buildString {
+                                        append(line.productLabel)
+                                        if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
+                                        line.rollNumber?.let { append(stringResource(R.string.pick_line_roll_suffix, it)) }
+                                    },
+                                ),
+                                fillValue = line.requested,
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
@@ -579,10 +620,11 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                                 emptyText = stringResource(R.string.pick_empty_container_lines),
                             )
                             containerEdits.forEachIndexed { index, line ->
-                                OutlinedTextField(
-                                    line.packed,
-                                    { v -> containerEdits[index] = line.copy(packed = v) },
-                                    label = { Text(stringResource(R.string.pick_label_packed_container, line.label)) },
+                                QtyField(
+                                    value = line.packed,
+                                    onValueChange = { v -> containerEdits[index] = line.copy(packed = v) },
+                                    label = stringResource(R.string.pick_label_packed_container, line.label),
+                                    fillValue = line.picked,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -643,12 +685,11 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                                         append(line.productLabel)
                                         if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
                                     }
-                                    OutlinedTextField(
-                                        line.packed,
-                                        { v -> lineEdits[index] = line.copy(packed = v) },
-                                        label = {
-                                            Text(stringResource(R.string.pick_label_packed_qty, productPart))
-                                        },
+                                    QtyField(
+                                        value = line.packed,
+                                        onValueChange = { v -> lineEdits[index] = line.copy(packed = v) },
+                                        label = stringResource(R.string.pick_label_packed_qty, productPart),
+                                        fillValue = line.picked.toDoubleOrNull(),
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }

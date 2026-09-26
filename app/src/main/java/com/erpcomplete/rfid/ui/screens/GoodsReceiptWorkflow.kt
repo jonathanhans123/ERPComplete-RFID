@@ -64,6 +64,7 @@ import com.erpcomplete.rfid.data.remote.WorkflowScanRequest
 import com.erpcomplete.rfid.ui.components.DataTableColumn
 import com.erpcomplete.rfid.ui.components.ErpCard
 import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
+import com.erpcomplete.rfid.ui.components.QtyField
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.IndexColumnSpec
 import com.erpcomplete.rfid.ui.components.JsonIndexListTable
@@ -1076,16 +1077,19 @@ fun ReceiveScreen(
                                 style = MaterialTheme.typography.labelMedium,
                             )
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                    line.acceptedQty,
-                                    { v -> lineDrafts[index] = line.copy(acceptedQty = v) },
-                                    label = { Text(accLabel) },
+                                // Accepted + rejected make up what is still to receive on this line.
+                                QtyField(
+                                    value = line.acceptedQty,
+                                    onValueChange = { v -> lineDrafts[index] = line.copy(acceptedQty = v) },
+                                    label = accLabel,
+                                    fillValue = (line.remainingQty - (line.rejectedQty.toDoubleOrNull() ?: 0.0)).coerceAtLeast(0.0),
                                     modifier = Modifier.weight(1f),
                                 )
-                                OutlinedTextField(
-                                    line.rejectedQty,
-                                    { v -> lineDrafts[index] = line.copy(rejectedQty = v) },
-                                    label = { Text(rejLabel) },
+                                QtyField(
+                                    value = line.rejectedQty,
+                                    onValueChange = { v -> lineDrafts[index] = line.copy(rejectedQty = v) },
+                                    label = rejLabel,
+                                    fillValue = (line.remainingQty - (line.acceptedQty.toDoubleOrNull() ?: 0.0)).coerceAtLeast(0.0),
                                     modifier = Modifier.weight(1f),
                                 )
                             }
@@ -1486,16 +1490,18 @@ fun ReceiveScreen(
                                 style = MaterialTheme.typography.labelMedium,
                             )
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                    line.acceptedQty,
-                                    { v -> detailLineEdits[index] = line.copy(acceptedQty = v) },
-                                    label = { Text(accLabel) },
+                                QtyField(
+                                    value = line.acceptedQty,
+                                    onValueChange = { v -> detailLineEdits[index] = line.copy(acceptedQty = v) },
+                                    label = accLabel,
+                                    fillValue = (line.orderedQty - (line.rejectedQty.toDoubleOrNull() ?: 0.0)).coerceAtLeast(0.0),
                                     modifier = Modifier.weight(1f),
                                 )
-                                OutlinedTextField(
-                                    line.rejectedQty,
-                                    { v -> detailLineEdits[index] = line.copy(rejectedQty = v) },
-                                    label = { Text(rejLabel) },
+                                QtyField(
+                                    value = line.rejectedQty,
+                                    onValueChange = { v -> detailLineEdits[index] = line.copy(rejectedQty = v) },
+                                    label = rejLabel,
+                                    fillValue = (line.orderedQty - (line.acceptedQty.toDoubleOrNull() ?: 0.0)).coerceAtLeast(0.0),
                                     modifier = Modifier.weight(1f),
                                 )
                             }

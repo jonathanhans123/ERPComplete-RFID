@@ -32,6 +32,7 @@ import com.erpcomplete.rfid.data.remote.PutawayLocationRow
 import com.erpcomplete.rfid.data.remote.UpdatePutawayRequest
 import com.erpcomplete.rfid.ui.components.DataTableColumn
 import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
+import com.erpcomplete.rfid.ui.components.QtyField
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.IndexColumnSpec
 import com.erpcomplete.rfid.ui.components.JsonIndexListTable
@@ -151,6 +152,8 @@ fun PutawayScreen(
     var taskLoading by remember { mutableStateOf(false) }
     var taskLoadedId by remember { mutableLongStateOf(-1L) }
     val lineEdits = remember { mutableStateListOf<PutawayLineEdit>() }
+    // Lines as last loaded from the server; a line differing from its baseline has unsaved edits.
+    val putawayBaseline = remember { mutableMapOf<Long, PutawayLineEdit>() }
     var lineHighlights by remember { mutableStateOf<Map<String, ScanMatchStatus>>(emptyMap()) }
     var rfidLocation by remember { mutableStateOf<PickerOption?>(null) }
     var locationOptions by remember { mutableStateOf<List<PickerOption>>(emptyList()) }
@@ -195,7 +198,20 @@ fun PutawayScreen(
         },
     )
 
-    fun applyTask(body: JsonObject?) {
+    /**
+     * Rebuild the lines from [body]. With [keepLocalEdits] (the 10 s background refresh), a
+     * quantity or location the user changed since the last server load is kept instead of being
+     * reset to the server value.
+     */
+    fun applyTask(body: JsonObject?, keepLocalEdits: Boolean = false) {
+        val localEdits = if (keepLocalEdits) {
+            lineEdits.filter { l ->
+                val base = putawayBaseline[l.itemId]
+                base == null || base.qtyPutaway != l.qtyPutaway || base.locationId != l.locationId
+            }.associateBy { it.itemId }
+        } else {
+            emptyMap()
+        }
         task = body
         locationOptions = body?.array("warehouse_locations")
             ?.mapNotNull { it.asJsonObject }
@@ -226,6 +242,17 @@ fun PutawayScreen(
                     existingLocationRowId = loc?.long("id"),
                 ),
             )
+        }
+        putawayBaseline.clear()
+        lineEdits.forEach { putawayBaseline[it.itemId] = it.copy() }
+        lineEdits.forEachIndexed { i, l ->
+            localEdits[l.itemId]?.let { edit ->
+                lineEdits[i] = l.copy(
+                    qtyPutaway = edit.qtyPutaway,
+                    locationId = edit.locationId,
+                    locationLabel = edit.locationLabel,
+                )
+            }
         }
     }
 
@@ -287,7 +314,7 @@ fun PutawayScreen(
             if (taskLoading || taskLoadedId != id) continue
             runCatching {
                 val res = container.api.getPutawayTask(id)
-                if (res.isSuccessful) applyTask(WorkflowJson.envelopeObject(res))
+                if (res.isSuccessful) applyTask(WorkflowJson.envelopeObject(res), keepLocalEdits = true)
             }
         }
     }
@@ -431,17 +458,14 @@ fun PutawayScreen(
                                 placeholder = stringResource(R.string.putaway_placeholder_location),
                                 onOpen = { pickerOpenForLine = index },
                             )
-                            OutlinedTextField(
-                                line.qtyPutaway,
-                                { v -> lineEdits[index] = line.copy(qtyPutaway = v) },
-                                label = {
-                                    Text(
-                                        buildString {
-                                            append(putLabel)
-                                            line.quantityUnitSuffix?.let { append(" (").append(it).append(")") }
-                                        },
-                                    )
+                            QtyField(
+                                value = line.qtyPutaway,
+                                onValueChange = { v -> lineEdits[index] = line.copy(qtyPutaway = v) },
+                                label = buildString {
+                                    append(putLabel)
+                                    line.quantityUnitSuffix?.let { append(" (").append(it).append(")") }
                                 },
+                                fillValue = line.qtyToPutaway,
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }

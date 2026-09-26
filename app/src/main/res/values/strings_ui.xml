@@ -806,4 +806,5 @@
     <string name="approvals_approved">Approved.</string>
     <string name="approvals_rejected">Rejected.</string>
     <string name="search_approvals_hint">Search approvals</string>
+    <string name="action_fill">Fill</string>
 </resources>

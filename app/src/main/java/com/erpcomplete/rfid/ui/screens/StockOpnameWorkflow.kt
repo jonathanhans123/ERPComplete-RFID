@@ -30,6 +30,7 @@ import com.erpcomplete.rfid.data.remote.StockOpnameCheckItem
 import com.erpcomplete.rfid.data.remote.WorkflowScanRequest
 import com.erpcomplete.rfid.ui.components.DataTableColumn
 import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
+import com.erpcomplete.rfid.ui.components.QtyField
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.IndexColumnSpec
 import com.erpcomplete.rfid.ui.components.JsonIndexListTable
@@ -473,12 +474,11 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                                 if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
                                 line.rollNumber?.let { append(stringResource(R.string.opname_line_roll_suffix, it)) }
                             }
-                            OutlinedTextField(
-                                line.countedQty,
-                                { v -> lineEdits[index] = line.copy(countedQty = v) },
-                                label = {
-                                    Text(stringResource(R.string.opname_field_label_product, countLabel, productPart))
-                                },
+                            QtyField(
+                                value = line.countedQty,
+                                onValueChange = { v -> lineEdits[index] = line.copy(countedQty = v) },
+                                label = stringResource(R.string.opname_field_label_product, countLabel, productPart),
+                                fillValue = line.systemQty,
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }

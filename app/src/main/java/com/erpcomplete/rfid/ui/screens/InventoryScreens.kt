@@ -50,6 +50,7 @@ import com.erpcomplete.rfid.data.remote.CreateStockAdjustmentRequest
 import com.erpcomplete.rfid.data.remote.WarehouseLocationUpsertRequest
 import com.erpcomplete.rfid.ui.components.ErpCard
 import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
+import com.erpcomplete.rfid.ui.components.QtyField
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.LiveSyncIndicator
 import com.erpcomplete.rfid.ui.components.LocationStockDetailSheet
@@ -1315,7 +1316,14 @@ private fun AdjustmentFormScreen(
                     )
                 }
             }
-            OutlinedTextField(newQty, { newQty = it }, label = { Text(newQtyLabel) }, modifier = Modifier.fillMaxWidth())
+            // The corrected stock level has no "full" amount to fill; keep the numeric keypad only.
+            QtyField(
+                value = newQty,
+                onValueChange = { newQty = it },
+                label = newQtyLabel,
+                fillValue = null,
+                modifier = Modifier.fillMaxWidth(),
+            )
             ErpPrimaryButton(
                 text = stringResource(R.string.inventory_adjustment_submit),
                 loading = loading,

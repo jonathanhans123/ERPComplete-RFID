@@ -33,10 +33,6 @@ class AuthStore(private val context: Context) {
         sessionCache = cache
     }
 
-    private fun notifySessionCache() {
-        sessionCache?.refreshFromStore(this)
-    }
-
     val accessToken: Flow<String?> = context.dataStore.data.map { it[KEY_TOKEN] }
     val userName: Flow<String?> = context.dataStore.data.map { it[KEY_NAME] }
     val userEmail: Flow<String?> = context.dataStore.data.map { it[KEY_EMAIL] }
@@ -96,14 +92,15 @@ class AuthStore(private val context: Context) {
                 prefs[KEY_DEVICE] = AppContainer.newDeviceUuid()
             }
         }
-        notifySessionCache()
+        sessionCache?.updateToken(token)
+        sessionCache?.clearWorkspace()
     }
 
     suspend fun updateAccessToken(token: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_TOKEN] = token
         }
-        notifySessionCache()
+        sessionCache?.updateToken(token)
     }
 
     suspend fun saveWorkspace(workspace: WorkspaceOption) {
@@ -117,7 +114,12 @@ class AuthStore(private val context: Context) {
             prefs[KEY_TEAM] = teamId.toString()
             workspace.teamName?.takeIf { it.isNotBlank() }?.let { prefs[KEY_TEAM_NAME] = it }
         }
-        notifySessionCache()
+        // Workspace fields only — never the token (see SessionCache).
+        sessionCache?.setWorkspace(
+            businessUnitId = workspace.businessUnitId.toString(),
+            teamId = teamId.toString(),
+            warehouseId = workspace.warehouseId.toString(),
+        )
     }
 
     suspend fun getBusinessUnits(): List<BusinessUnitOption> {
@@ -135,7 +137,7 @@ class AuthStore(private val context: Context) {
             prefs.remove(KEY_WAREHOUSE)
             prefs.remove(KEY_WAREHOUSE_NAME)
         }
-        notifySessionCache()
+        sessionCache?.clearWorkspace()
     }
 
     suspend fun clear() {
@@ -145,7 +147,7 @@ class AuthStore(private val context: Context) {
             device?.let { prefs[KEY_DEVICE] = it }
             prefs.remove(KEY_MOBILE_PERMS)
         }
-        notifySessionCache()
+        sessionCache?.clearAll()
     }
 
     fun accessTokenBlocking(): String? = runBlocking { accessToken.first() }

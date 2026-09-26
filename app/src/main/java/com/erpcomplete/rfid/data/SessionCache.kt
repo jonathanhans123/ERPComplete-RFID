@@ -14,15 +14,19 @@ class SessionCache(authStore: AuthStore) {
     @Volatile var warehouseId: String? = authStore.warehouseIdBlocking()
         private set
 
-    fun refreshFromStore(authStore: AuthStore) {
-        accessToken = authStore.accessTokenBlocking()
-        businessUnitId = authStore.businessUnitIdBlocking()
-        teamId = authStore.teamIdBlocking()
-        warehouseId = authStore.warehouseIdBlocking()
-    }
-
+    /*
+     * Each save sets exactly the fields it wrote, from the values it wrote. Re-reading everything
+     * from DataStore after an unrelated save (e.g. picking a warehouse) could land mid-refresh and
+     * put an already-revoked token back into memory, which then signed the user out.
+     */
     fun updateToken(token: String?) {
         accessToken = token
+    }
+
+    fun setWorkspace(businessUnitId: String, teamId: String, warehouseId: String) {
+        this.businessUnitId = businessUnitId
+        this.teamId = teamId
+        this.warehouseId = warehouseId
     }
 
     fun clearWorkspace() {

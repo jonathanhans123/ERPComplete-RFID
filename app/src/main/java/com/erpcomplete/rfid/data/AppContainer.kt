@@ -10,6 +10,7 @@ import com.erpcomplete.rfid.rfid.ZebraFirmwareRepository
 import com.erpcomplete.rfid.sync.NetworkSyncMonitor
 import com.erpcomplete.rfid.sync.SyncRepository
 import com.erpcomplete.rfid.util.AppLog
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -115,8 +116,7 @@ class AppContainer(context: Context) {
         // request carried), wait for it and retry with its token instead of refreshing again.
         runBlocking {
             sessionMutex.withLock {
-                val current = sessionCache.accessToken
-                if (current.isNullOrBlank()) return@withLock null
+                val current = adoptStoredTokenIfNewer() ?: return@withLock null
                 val token = if (sent != null && sent != current) {
                     current
                 } else {
@@ -127,6 +127,19 @@ class AppContainer(context: Context) {
                     .build()
             }
         }
+    }
+
+    /**
+     * The persisted token is the source of truth. If memory holds a different one (a stale
+     * in-memory copy), adopt the stored token so a 401 on the stale copy is not read as sign-out.
+     * Returns the token now in memory.
+     */
+    private suspend fun adoptStoredTokenIfNewer(): String? {
+        val stored = authStore.accessToken.first()
+        if (!stored.isNullOrBlank() && stored != sessionCache.accessToken) {
+            sessionCache.updateToken(stored)
+        }
+        return sessionCache.accessToken?.takeIf { it.isNotBlank() }
     }
 
     /** POST auth/refresh outside the main client (no authenticator); returns and stores the new token. */
@@ -205,8 +218,7 @@ class AppContainer(context: Context) {
 
     /** Rotate API token on cold start / app resume (same as Messenger). One refresh at a time. */
     suspend fun ensureValidSession(): Boolean = sessionMutex.withLock {
-        val token = sessionCache.accessToken
-        if (token.isNullOrBlank()) return@withLock false
+        val token = adoptStoredTokenIfNewer() ?: return@withLock false
         // Issued moments ago (login, or the caller just ahead of us in the lock): nothing to rotate.
         if (isFresh(token)) return@withLock true
         try {
@@ -220,7 +232,10 @@ class AppContainer(context: Context) {
                 true
             } else {
                 // Only a rejection of the token that is still current means the session is over.
-                if (response.code() == 401 && sessionCache.accessToken == token) authStore.clear()
+                if (response.code() == 401 && sessionCache.accessToken == token) {
+                    if (adoptStoredTokenIfNewer() != token) return@withLock true
+                    authStore.clear()
+                }
                 false
             }
         } catch (_: Exception) {

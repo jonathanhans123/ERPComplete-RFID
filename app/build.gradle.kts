@@ -13,8 +13,8 @@ android {
         applicationId = "com.erpcomplete.rfid"
         minSdk = 29
         targetSdk = 34
-        versionCode = 11
-        versionName = "0.1.10"
+        versionCode = 12
+        versionName = "0.1.11"
 
         buildConfigField("String", "API_BASE_URL", "\"https://187.77.125.241/api/v1\"")
         // Host header for the production VPS (reached by IP); defined here so every flavor compiles.

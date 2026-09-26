@@ -799,4 +799,8 @@
     <string name="approvals_rejected">Ditolak.</string>
     <string name="search_approvals_hint">Cari persetujuan</string>
     <string name="action_fill">Penuh</string>
+    <string name="pager_previous">Sebelumnya</string>
+    <string name="pager_next">Berikutnya</string>
+    <string name="pager_page_of">Hal %1$d dari %2$d</string>
+    <string name="pager_lines">%1$d baris</string>
 </resources>

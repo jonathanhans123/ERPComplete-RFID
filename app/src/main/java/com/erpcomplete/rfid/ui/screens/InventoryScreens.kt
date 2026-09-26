@@ -72,6 +72,8 @@ import com.erpcomplete.rfid.ui.components.WorkflowTile
 import com.erpcomplete.rfid.ui.permissions.rememberMobileInventoryPermissions
 import com.erpcomplete.rfid.ui.util.UiStrings
 import com.erpcomplete.rfid.ui.components.rememberWorkflowLiveList
+import com.erpcomplete.rfid.ui.components.WorkflowPager
+import com.erpcomplete.rfid.ui.components.rememberWorkflowPagedList
 import com.erpcomplete.rfid.util.ApiErrorParser
 import com.erpcomplete.rfid.util.DisplayFormat
 import com.erpcomplete.rfid.util.PickerMappers
@@ -879,6 +881,9 @@ private fun StockLocationPickerScreen(
     }
 }
 
+/** Stock lines per page on the location stock screen (the API caps at 100). */
+private const val STOCK_PAGE_SIZE = 50
+
 @Composable
 private fun LocationStockScreen(
     container: AppContainer,
@@ -897,21 +902,30 @@ private fun LocationStockScreen(
         mutableStateOf(if (isUnmarked) unmarkedLabel else defaultLocationLabel)
     }
     val sortSearch = rememberTableSortSearch()
-    val liveList = rememberWorkflowLiveList(enabled = true) { page ->
-        if (page == 1 && !isUnmarked) {
-            runCatching {
-                val locRes = container.api.getWarehouseLocation(locationId)
-                if (locRes.isSuccessful) {
-                    envelopeObject(locRes)?.let { locationLabel = WorkflowJson.locationLabel(it) }
-                }
+    LaunchedEffect(locationId) {
+        if (isUnmarked) return@LaunchedEffect
+        runCatching {
+            val locRes = container.api.getWarehouseLocation(locationId)
+            if (locRes.isSuccessful) {
+                envelopeObject(locRes)?.let { locationLabel = WorkflowJson.locationLabel(it) }
             }
         }
+    }
+    // A location can hold thousands of stock lines: search on the server (debounced) and page
+    // through 50 at a time instead of loading everything.
+    var serverSearch by remember { mutableStateOf("") }
+    LaunchedEffect(sortSearch.searchQuery) {
+        kotlinx.coroutines.delay(350)
+        serverSearch = sortSearch.searchQuery.trim()
+    }
+    val liveList = rememberWorkflowPagedList(enabled = true, queryKey = serverSearch) { page ->
+        val search = serverSearch.ifBlank { null }
         val res = if (isUnmarked) {
             val whId = container.workspaceContext().warehouseId
                 ?: error(context.getString(R.string.error_no_warehouse_in_workspace))
-            container.api.listUnlocatedStocks(whId, page = page, perPage = 200)
+            container.api.listUnlocatedStocks(whId, search = search, page = page, perPage = STOCK_PAGE_SIZE)
         } else {
-            container.api.listLocationStocks(locationId, page = page, perPage = 200)
+            container.api.listLocationStocks(locationId, search = search, page = page, perPage = STOCK_PAGE_SIZE)
         }
         if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
         envelopePage(res, page)
@@ -959,7 +973,7 @@ private fun LocationStockScreen(
         liveList.error?.let { StatusBanner(it, isError = true) }
         LiveSyncIndicator(liveList.lastUpdatedMs)
         SortableCardListToolbar(
-            itemCount = visibleRows.size,
+            itemCount = liveList.total ?: visibleRows.size,
             sortSearch = sortSearch,
             sortLabels = sortLabels,
             searchPlaceholder = stringResource(R.string.search_stock_hint),
@@ -988,6 +1002,7 @@ private fun LocationStockScreen(
                     )
                 }
             }
+            WorkflowPager(liveList)
         }
     }
 

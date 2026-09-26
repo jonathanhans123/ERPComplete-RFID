@@ -807,4 +807,8 @@
     <string name="approvals_rejected">Rejected.</string>
     <string name="search_approvals_hint">Search approvals</string>
     <string name="action_fill">Fill</string>
+    <string name="pager_previous">Previous</string>
+    <string name="pager_next">Next</string>
+    <string name="pager_page_of">Page %1$d of %2$d</string>
+    <string name="pager_lines">%1$d lines</string>
 </resources>

@@ -784,7 +784,7 @@
     <string name="locate_no_signal">No signal — move and sweep</string>
     <!-- Background / battery reliability -->
     <string name="bg_reliability_title">Allow background operation</string>
-    <string name="bg_reliability_message">ERPComplete RFID needs to run in the background for warehouse task alerts and sync.\n\nOn the next screen, tap Allow. If you do not see that option, open App info → Battery and set Battery saver to No restrictions (Unrestricted).</string>
+    <string name="bg_reliability_message">ERPWarehouse needs to run in the background for warehouse task alerts and sync.\n\nOn the next screen, tap Allow. If you do not see that option, open App info → Battery and set Battery saver to No restrictions (Unrestricted).</string>
     <string name="bg_reliability_allow">Allow</string>
     <string name="bg_reliability_later">Later</string>
     <string name="bg_reliability_manual_title">Set battery to No restrictions</string>

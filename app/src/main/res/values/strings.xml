@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ERPComplete RFID</string>
+    <string name="app_name">ERPWarehouse</string>
 
     <!-- Navigation -->
     <string name="nav_home">Home</string>
@@ -104,7 +104,7 @@
     <string name="settings_void_success">Tag voided</string>
     <string name="settings_section_account">Account</string>
     <string name="settings_sign_out">Sign out</string>
-    <string name="settings_version">ERPComplete RFID %1$s</string>
+    <string name="settings_version">ERPWarehouse %1$s</string>
 
     <!-- Task notifications -->
     <string name="settings_section_notifications">Notifications</string>

@@ -776,7 +776,7 @@
     <string name="locate_weak_signal">Sinyal lemah — terus sapu</string>
     <string name="locate_no_signal">Tidak ada sinyal — bergerak dan sapu</string>
     <string name="bg_reliability_title">Izinkan operasi latar belakang</string>
-    <string name="bg_reliability_message">ERPComplete RFID perlu berjalan di latar belakang untuk peringatan tugas gudang dan sinkronisasi.\n\nDi layar berikutnya, ketuk Izinkan. Jika tidak ada opsi itu, buka Info aplikasi → Baterai dan atur Penghemat baterai ke Tanpa batasan.</string>
+    <string name="bg_reliability_message">ERPWarehouse perlu berjalan di latar belakang untuk peringatan tugas gudang dan sinkronisasi.\n\nDi layar berikutnya, ketuk Izinkan. Jika tidak ada opsi itu, buka Info aplikasi → Baterai dan atur Penghemat baterai ke Tanpa batasan.</string>
     <string name="bg_reliability_allow">Izinkan</string>
     <string name="bg_reliability_later">Nanti</string>
     <string name="bg_reliability_manual_title">Atur baterai ke Tanpa batasan</string>

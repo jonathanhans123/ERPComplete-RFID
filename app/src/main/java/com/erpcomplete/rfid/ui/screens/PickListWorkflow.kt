@@ -2,14 +2,17 @@ package com.erpcomplete.rfid.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -22,12 +25,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
+import com.erpcomplete.rfid.data.remote.PickConfirmRequest
+import com.erpcomplete.rfid.data.remote.PickScanLookupRequest
+import com.erpcomplete.rfid.data.remote.PickScanRequest
 import com.erpcomplete.rfid.data.remote.UpdatePackCutRequest
+import com.erpcomplete.rfid.rfid.RfidManager
 import com.erpcomplete.rfid.data.remote.UpdatePickListRequest
 import com.erpcomplete.rfid.data.remote.WorkflowScanRequest
 import com.erpcomplete.rfid.ui.components.DataTableColumn
@@ -118,6 +126,21 @@ private data class ContainerPackEdit(
     var packed: String,
 )
 
+/** One bal (container) of the pick list, for the one-tap Pack bal list. */
+private data class BalRow(val id: Long, val label: String, val packed: Double, val total: Double)
+
+private fun balRows(pickList: JsonObject?, fallbackLabel: String): List<BalRow> =
+    pickList?.array("containers")?.map { el ->
+        val c = el.asJsonObject
+        val items = c.array("container_items")?.map { it.asJsonObject }.orEmpty()
+        BalRow(
+            id = c.long("id") ?: 0L,
+            label = listOfNotNull(c.string("container_name"), c.string("container_number")).joinToString(" · ").ifBlank { fallbackLabel },
+            packed = items.sumOf { it.double("packed_quantity") ?: 0.0 },
+            total = items.sumOf { it.double("picked_quantity") ?: it.double("requested_quantity") ?: 0.0 },
+        )
+    }.orEmpty()
+
 private fun JsonObject.boolean(key: String): Boolean? =
     if (!has(key) || get(key).isJsonNull) null else get(key).asBoolean
 
@@ -198,6 +221,13 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
     // differs from this is an unsaved local edit.
     val pickBaseline = remember { mutableMapOf<String, String>() }
     var detailTab by remember { mutableIntStateOf(0) }
+    // Confirm-by-exception: taps and scans confirm on the server; manual quantity entry is optional.
+    var showAdjust by remember { mutableStateOf(false) }
+    var scanMessage by remember { mutableStateOf<String?>(null) }
+    var barcodeInput by remember { mutableStateOf("") }
+    val handledScans = remember { mutableMapOf<String, Long>() }
+    val msgSaved = stringResource(R.string.pick_success_confirmed)
+    val scanNotFound = stringResource(R.string.pick_scan_not_found)
 
     LaunchedEffect(step, lineEdits.size, lineEdits.map { "${it.itemId}:${it.picked}:${it.packed}" }) {
         val id = (step as? PickStep.Detail)?.id ?: return@LaunchedEffect
@@ -363,7 +393,29 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
         step = PickStep.Detail(id)
     }
 
+    suspend fun reloadPick(id: Long) {
+        val res = container.api.getPickList(id)
+        if (res.isSuccessful) applyPickList(WorkflowJson.envelopeObject(res))
+    }
+
+    /** One-tap confirm on the server, then reload; [onDone] sees the refreshed pick list. */
+    fun runConfirm(pickId: Long, request: PickConfirmRequest, onDone: (JsonObject?) -> Unit = {}) {
+        scope.launchWorkflow(
+            setLoading = { actionLoading = it },
+            onError = { message = it },
+            onSuccess = { message = it },
+        ) {
+            val res = container.api.confirmPickList(pickId, request)
+            if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res, authenticated = true))
+            container.workflowDraftStore.clear("pick_lines_$pickId")
+            reloadPick(pickId)
+            onDone(pickList)
+            res.body()?.message ?: msgSaved
+        }
+    }
+
     fun openPick(id: Long) {
+        container.rfidManager.clearScannedTags()
         beginPickDetail(id)
         scope.launchWorkflow(
             setLoading = { },
@@ -376,6 +428,42 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
             pickLoading = false
             mergePickDraft(id)
             null
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        container.rfidManager.scannedTags.collect { list ->
+            val current = step
+            val pickId = (current as? PickStep.Detail)?.id ?: 0L
+            if (current is PickStep.Detail && pickLoadedId != pickId) return@collect
+            val fresh = list.filter { tag ->
+                // A barcode counts every time it is read; an RFID tag once per pick list.
+                val stamp = if (tag.type == RfidManager.ScanType.BARCODE) tag.lastSeenAt else 0L
+                val key = "$pickId:${tag.epc}"
+                if (handledScans[key] == stamp) false else { handledScans[key] = stamp; true }
+            }.reversed()
+            if (fresh.isEmpty()) return@collect
+            if (current !is PickStep.Detail) {
+                val code = fresh.last().epc
+                val res = runCatching { container.api.lookupPickListByScan(PickScanLookupRequest(code)) }.getOrNull()
+                val id = res?.takeIf { it.isSuccessful }?.let { WorkflowJson.envelopeObject(it)?.long("id") }
+                if (id != null) openPick(id) else message = scanNotFound.format(code)
+                return@collect
+            }
+            val stepName = if (detailTab == 0) "pick" else "pack"
+            fresh.forEach { tag ->
+                val res = runCatching { container.api.scanPickList(pickId, PickScanRequest(tag.epc, stepName)) }.getOrNull()
+                scanMessage = when {
+                    res == null -> tag.epc
+                    res.isSuccessful -> "${tag.epc}: ${res.body()?.message ?: msgSaved}"
+                    else -> "${tag.epc}: ${ApiErrorParser.httpMessage(res)}"
+                }
+            }
+            runCatching { reloadPick(pickId) }
+            if (detailTab == 1 && pickList?.string("pick_status") == "completed") {
+                step = PickStep.List
+                liveList.refresh()
+            }
         }
     }
 
@@ -445,297 +533,368 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                 }
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (detailTab == 0) {
-                        val matchLines = lineEdits.map { line ->
-                            WorkflowMatchLine(
-                                key = line.itemId.toString(),
-                                productId = line.productId,
-                                variationValueId = line.variationValueId,
-                                rollNumber = line.rollNumber,
-                                isRoll = line.isRoll,
-                                label = buildString {
-                                    append(line.productLabel)
-                                    if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
-                                    line.rollNumber?.let { append(stringResource(R.string.pick_line_roll_suffix, it)) }
-                                },
-                            )
-                        }
-                        WorkflowDataTable(
-                            columns = listOf(
-                                DataTableColumn(colProduct, 0.95f),
-                                DataTableColumn(colVar, 0.55f),
-                                DataTableColumn(colRoll, 0.45f),
-                                DataTableColumn(colRequested, 0.4f),
-                                DataTableColumn(colPicked, 0.45f),
-                                DataTableColumn(colStatus, 0.65f),
-                            ),
-                            rowBackground = { index ->
-                                lineHighlights[matchLines.getOrNull(index)?.key]
-                                    ?.let(scanColors::forStatus)
-                                    ?: androidx.compose.ui.graphics.Color.Transparent
-                            },
-                            rows = lineEdits.map { line ->
-                                val picked = line.picked.toDoubleOrNull() ?: 0.0
-                                val status = when {
-                                    picked <= 0.0 -> "pending"
-                                    picked < line.requested -> "partial"
-                                    else -> "completed"
-                                }
-                                val rollLabel = line.rollNumber
-                                    ?: line.rollLength?.let { DisplayFormat.qty(it) }
-                                    ?: if (line.isRoll) emDash else ""
-                                listOf(
-                                    TableCell.Text(line.productLabel),
-                                    TableCell.Text(line.variationLabel.ifBlank { emDash }),
-                                    TableCell.Text(rollLabel.ifBlank { emDash }),
-                                    TableCell.Text(qtyWithUnit(DisplayFormat.qty(line.requested), line.quantityUnitSuffix, line.isRoll)),
-                                    TableCell.Text(qtyWithUnit(line.picked, line.quantityUnitSuffix, line.isRoll)),
-                                    TableCell.Status(status),
-                                )
-                            },
-                            emptyText = stringResource(R.string.pick_empty_lines),
-                        )
-                        lineEdits.forEachIndexed { index, line ->
-                            val pickLabel = if (line.isRoll) {
-                                WorkflowJson.rollLengthLabel(line.quantityUnitSuffix, labelPickedLength)
-                            } else {
-                                labelPickedQty
-                            }
-                            QtyField(
-                                value = line.picked,
-                                onValueChange = { v -> lineEdits[index] = line.copy(picked = v) },
-                                label = stringResource(
-                                    R.string.pick_field_label_product,
-                                    pickLabel,
-                                    buildString {
-                                        append(line.productLabel)
-                                        if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
-                                        line.rollNumber?.let { append(stringResource(R.string.pick_line_roll_suffix, it)) }
-                                    },
-                                ),
-                                fillValue = line.requested,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                        WorkflowLineScanSection(
-                            container = container,
-                            tags = tags,
-                            lines = matchLines,
-                            onIncrementLine = { key, entry ->
-                                val index = lineEdits.indexOfFirst { it.itemId.toString() == key }
-                                if (index < 0) return@WorkflowLineScanSection
-                                val line = lineEdits[index]
-                                val delta = scanIncrementDelta(entry)
-                                lineEdits[index] = line.copy(
-                                    picked = incrementQtyField(line.picked, delta),
-                                )
-                            },
-                            onLineHighlightsChanged = { lineHighlights = it },
-                            onClear = { container.rfidManager.clearScannedTags() },
-                        )
-                        ErpPrimaryButton(text = stringResource(R.string.pick_btn_sync_picks), onClick = {
-                            scope.launchWorkflow(
-                                onError = { message = it },
-                                onSuccess = { message = it },
-                            ) {
-                                val epcs = tags.map { it.epc }
-                                if (epcs.isEmpty()) error(errScanTagsFirst)
-                                val res = container.api.pickRfidConfirm(
-                                    pickId,
-                                    WorkflowScanRequest(epcs, UUID.randomUUID().toString()),
-                                )
-                                if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-                                queueReads(container, "pick", epcs)
-                                val data = WorkflowJson.envelopeObject(res)
-                                data?.array("confirmed")?.forEach { el ->
-                                    val row = el.asJsonObject
-                                    val itemId = row.long("pick_list_item_id") ?: return@forEach
-                                    val scanned = row.double("scanned_tags") ?: row.double("scanned") ?: return@forEach
-                                    val idx = lineEdits.indexOfFirst { it.itemId == itemId }
-                                    if (idx >= 0) {
-                                        lineEdits[idx] = lineEdits[idx].copy(picked = DisplayFormat.qty(scanned))
-                                    }
-                                }
-                                res.body()?.message ?: msgConfirmed
-                            }
-                        })
-                        ErpPrimaryButton(text = stringResource(R.string.pick_btn_save_picking), loading = actionLoading, onClick = {
-                            scope.launchWorkflow(
-                                setLoading = { actionLoading = it },
-                                onError = { message = it },
-                                onSuccess = { message = it },
-                            ) {
-                                val picked = lineEdits.associate {
-                                    it.itemId.toString() to (it.picked.toDoubleOrNull() ?: 0.0)
-                                }
-                                val body = UpdatePickListRequest(picked_quantities = picked)
-                                val res = container.workflowApi.executeOrQueue(
-                                    endpoint = "inventory-pick-lists/$pickId",
-                                    method = "PUT",
-                                    body = body,
-                                ) { container.api.updatePickList(pickId, body) }
-                                if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res, authenticated = true))
-                                applyPickList(unwrapPickList(WorkflowJson.envelopeObject(res)))
-                                container.workflowDraftStore.clear("pick_lines_$pickId")
-                                msgPickingSaved
-                            }
-                        })
-                        ErpPrimaryButton(text = stringResource(R.string.pick_btn_complete_picking), loading = actionLoading, onClick = {
-                            scope.launchWorkflow(
-                                setLoading = { actionLoading = it },
-                                onError = { message = it },
-                                onSuccess = { message = it },
-                            ) {
-                                val picked = lineEdits.associate {
-                                    it.itemId.toString() to (it.picked.toDoubleOrNull() ?: 0.0)
-                                }
-                                val body = UpdatePickListRequest(picked_quantities = picked, pick_status = "completed_picking")
-                                val res = container.workflowApi.executeOrQueue(
-                                    endpoint = "inventory-pick-lists/$pickId",
-                                    method = "PUT",
-                                    body = body,
-                                ) { container.api.updatePickList(pickId, body) }
-                                if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res, authenticated = true))
-                                applyPickList(unwrapPickList(WorkflowJson.envelopeObject(res)))
-                                container.workflowDraftStore.clear("pick_lines_$pickId")
-                                detailTab = 1
-                                msgPickingCompleted
-                            }
-                        })
-                    } else {
-                        if (containerEdits.isNotEmpty()) {
-                            Text(stringResource(R.string.pick_section_container_packing), style = MaterialTheme.typography.labelMedium)
-                            WorkflowDataTable(
-                                columns = listOf(
-                                    DataTableColumn(stringResource(R.string.pick_col_assignment), 1.4f),
-                                    DataTableColumn(colPicked, 0.45f),
-                                    DataTableColumn(stringResource(R.string.pick_col_packed), 0.45f),
-                                ),
-                                rows = containerEdits.map { line ->
-                                    listOf(
-                                        TableCell.Text(line.label),
-                                        TableCell.Text(DisplayFormat.qty(line.picked)),
-                                        TableCell.Text(line.packed),
-                                    )
-                                },
-                                emptyText = stringResource(R.string.pick_empty_container_lines),
-                            )
-                            containerEdits.forEachIndexed { index, line ->
-                                QtyField(
-                                    value = line.packed,
-                                    onValueChange = { v -> containerEdits[index] = line.copy(packed = v) },
-                                    label = stringResource(R.string.pick_label_packed_container, line.label),
-                                    fillValue = line.picked,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
+                        val lineTitle: (PickLineEdit) -> String = { line ->
+                            buildString {
+                                append(line.productLabel)
+                                if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
+                                line.rollNumber?.let { append(" · #").append(it) }
                             }
                         }
-                        WorkflowDataTable(
-                            columns = listOf(
-                                DataTableColumn(colProduct, 0.9f),
-                                DataTableColumn(colVar, 0.5f),
-                                DataTableColumn(colRoll, 0.4f),
-                                DataTableColumn(colPicked, 0.4f),
-                                DataTableColumn(stringResource(R.string.pick_col_pack_cut), 0.5f),
-                            ),
-                            rows = lineEdits.map { line ->
-                                val rollLabel = line.rollNumber
-                                    ?: line.rollLength?.let { DisplayFormat.qty(it) }
-                                    ?: if (line.isRoll) emDash else ""
-                                val packCut = when {
-                                    line.isRoll -> line.cutLengths.ifBlank { emDash }
-                                    line.hasContainerAssignments -> packCutContainerLabel
-                                    else -> line.packed
-                                }
-                                listOf(
-                                    TableCell.Text(line.productLabel),
-                                    TableCell.Text(line.variationLabel.ifBlank { emDash }),
-                                    TableCell.Text(rollLabel.ifBlank { emDash }),
-                                    TableCell.Text(qtyWithUnit(line.picked, line.quantityUnitSuffix, line.isRoll)),
-                                    TableCell.Text(packCut),
-                                )
-                            },
-                            emptyText = stringResource(R.string.pick_empty_pack_lines),
-                        )
-                        lineEdits.forEachIndexed { index, line ->
-                            when {
-                                line.isRoll -> {
-                                    val unit = line.quantityUnitSuffix ?: "m"
-                                    val productPart = buildString {
-                                        append(line.productLabel)
-                                        if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
-                                        line.rollNumber?.let { append(stringResource(R.string.pick_line_roll_suffix, it)) }
-                                    }
-                                    OutlinedTextField(
-                                        line.cutLengths,
-                                        { v -> lineEdits[index] = line.copy(cutLengths = v) },
-                                        label = {
-                                            Text(stringResource(R.string.pick_label_cut_lengths, unit, productPart))
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        minLines = 2,
-                                    )
+                        Text(stringResource(R.string.pick_scan_hint_pick), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        scanMessage?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
+                        ErpPrimaryButton(text = stringResource(R.string.pick_btn_pick_all_complete), loading = actionLoading, onClick = {
+                            runConfirm(pickId, PickConfirmRequest(scope = "pick_all", complete = true)) { detailTab = 1 }
+                        })
+                        lineEdits.forEach { line ->
+                            val picked = line.picked.toDoubleOrNull() ?: 0.0
+                            val full = line.requested > 0.0 && picked >= line.requested
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(lineTitle(line), style = MaterialTheme.typography.bodyMedium)
                                     Text(
-                                        stringResource(R.string.pick_cut_lengths_hint),
+                                        stringResource(
+                                            R.string.pick_qty_progress,
+                                            qtyWithUnit(line.picked, line.quantityUnitSuffix, line.isRoll),
+                                            qtyWithUnit(DisplayFormat.qty(line.requested), line.quantityUnitSuffix, line.isRoll),
+                                        ),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
-                                !line.hasContainerAssignments -> {
-                                    val productPart = buildString {
-                                        append(line.productLabel)
-                                        if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
+                                if (full) {
+                                    TextButton(enabled = !actionLoading, onClick = {
+                                        runConfirm(pickId, PickConfirmRequest(scope = "pick_line", ids = listOf(line.itemId), quantity = 0.0))
+                                    }) { Text(stringResource(R.string.pick_btn_undo)) }
+                                } else {
+                                    OutlinedButton(enabled = !actionLoading, onClick = {
+                                        runConfirm(pickId, PickConfirmRequest(scope = "pick_line", ids = listOf(line.itemId)))
+                                    }) { Text(stringResource(R.string.pick_btn_pick_line)) }
+                                }
+                            }
+                        }
+                        OutlinedTextField(
+                            value = barcodeInput,
+                            onValueChange = { barcodeInput = it },
+                            label = { Text(stringResource(R.string.label_barcode)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
+                                barcodeInput.trim().takeIf { it.isNotBlank() }?.let { container.rfidManager.recordWorkflowBarcode(it) }
+                                barcodeInput = ""
+                            }),
+                        )
+                        TextButton(onClick = { showAdjust = !showAdjust }) {
+                            Text(stringResource(if (showAdjust) R.string.pick_toggle_adjust_hide else R.string.pick_toggle_adjust))
+                        }
+                        if (showAdjust) {
+                            lineEdits.forEachIndexed { index, line ->
+                                val pickLabel = if (line.isRoll) {
+                                    WorkflowJson.rollLengthLabel(line.quantityUnitSuffix, labelPickedLength)
+                                } else {
+                                    labelPickedQty
+                                }
+                                QtyField(
+                                    value = line.picked,
+                                    onValueChange = { v -> lineEdits[index] = line.copy(picked = v) },
+                                    label = stringResource(
+                                        R.string.pick_field_label_product,
+                                        pickLabel,
+                                        buildString {
+                                            append(line.productLabel)
+                                            if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
+                                            line.rollNumber?.let { append(stringResource(R.string.pick_line_roll_suffix, it)) }
+                                        },
+                                    ),
+                                    fillValue = line.requested,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                            ErpPrimaryButton(text = stringResource(R.string.pick_btn_save_picking), loading = actionLoading, onClick = {
+                                scope.launchWorkflow(
+                                    setLoading = { actionLoading = it },
+                                    onError = { message = it },
+                                    onSuccess = { message = it },
+                                ) {
+                                    val picked = lineEdits.associate {
+                                        it.itemId.toString() to (it.picked.toDoubleOrNull() ?: 0.0)
                                     }
+                                    val body = UpdatePickListRequest(picked_quantities = picked)
+                                    val res = container.workflowApi.executeOrQueue(
+                                        endpoint = "inventory-pick-lists/$pickId",
+                                        method = "PUT",
+                                        body = body,
+                                    ) { container.api.updatePickList(pickId, body) }
+                                    if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res, authenticated = true))
+                                    applyPickList(unwrapPickList(WorkflowJson.envelopeObject(res)))
+                                    container.workflowDraftStore.clear("pick_lines_$pickId")
+                                    msgPickingSaved
+                                }
+                            })
+                            ErpPrimaryButton(text = stringResource(R.string.pick_btn_complete_picking), loading = actionLoading, onClick = {
+                                scope.launchWorkflow(
+                                    setLoading = { actionLoading = it },
+                                    onError = { message = it },
+                                    onSuccess = { message = it },
+                                ) {
+                                    val picked = lineEdits.associate {
+                                        it.itemId.toString() to (it.picked.toDoubleOrNull() ?: 0.0)
+                                    }
+                                    val body = UpdatePickListRequest(picked_quantities = picked, pick_status = "completed_picking")
+                                    val res = container.workflowApi.executeOrQueue(
+                                        endpoint = "inventory-pick-lists/$pickId",
+                                        method = "PUT",
+                                        body = body,
+                                    ) { container.api.updatePickList(pickId, body) }
+                                    if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res, authenticated = true))
+                                    applyPickList(unwrapPickList(WorkflowJson.envelopeObject(res)))
+                                    container.workflowDraftStore.clear("pick_lines_$pickId")
+                                    detailTab = 1
+                                    msgPickingCompleted
+                                }
+                            })
+                        }
+                    } else {
+                        Text(stringResource(R.string.pick_scan_hint_pack), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        scanMessage?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
+                        val backToListWhenDone: (JsonObject?) -> Unit = { pl ->
+                            if (pl?.string("pick_status") == "completed") {
+                                step = PickStep.List
+                                liveList.refresh()
+                            }
+                        }
+                        ErpPrimaryButton(text = stringResource(R.string.pick_btn_pack_cut_all), loading = actionLoading, onClick = {
+                            runConfirm(pickId, PickConfirmRequest(scope = "pack_all"), backToListWhenDone)
+                        })
+                        val bals = balRows(pickList, fallbackContainer)
+                        if (bals.isNotEmpty()) {
+                            Text(stringResource(R.string.pick_section_bals), style = MaterialTheme.typography.labelMedium)
+                            bals.forEach { bal ->
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(bal.label, style = MaterialTheme.typography.bodyMedium)
+                                        Text(stringResource(R.string.pick_qty_progress, DisplayFormat.qty(bal.packed), DisplayFormat.qty(bal.total)),
+                                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    if (bal.total > 0.0 && bal.packed >= bal.total) {
+                                        Text(stringResource(R.string.pick_done), color = MaterialTheme.colorScheme.primary)
+                                    } else {
+                                        OutlinedButton(enabled = !actionLoading, onClick = {
+                                            runConfirm(pickId, PickConfirmRequest(scope = "pack_container", ids = listOf(bal.id)), backToListWhenDone)
+                                        }) { Text(stringResource(R.string.pick_btn_pack_bal)) }
+                                    }
+                                }
+                            }
+                        }
+                        val rolls = lineEdits.filter { it.isRoll }
+                        if (rolls.isNotEmpty()) {
+                            Text(stringResource(R.string.pick_section_rolls), style = MaterialTheme.typography.labelMedium)
+                            rolls.forEach { line ->
+                                val cut = line.cutLengths.split(",").mapNotNull { it.trim().toDoubleOrNull() }.sum()
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(buildString {
+                                            append(line.productLabel)
+                                            if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
+                                            line.rollNumber?.let { append(" · #").append(it) }
+                                        }, style = MaterialTheme.typography.bodyMedium)
+                                        Text(line.cutLengths.ifBlank { emDash }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    if (line.requested > 0.0 && cut >= line.requested) {
+                                        Text(stringResource(R.string.pick_done), color = MaterialTheme.colorScheme.primary)
+                                    } else {
+                                        OutlinedButton(enabled = !actionLoading, onClick = {
+                                            runConfirm(pickId, PickConfirmRequest(scope = "cut_roll", ids = listOf(line.itemId)), backToListWhenDone)
+                                        }) { Text(stringResource(R.string.pick_btn_cut_roll)) }
+                                    }
+                                }
+                            }
+                        }
+                        val loose = lineEdits.filter { !it.isRoll && !it.hasContainerAssignments }
+                        if (loose.isNotEmpty()) {
+                            Text(stringResource(R.string.pick_section_loose), style = MaterialTheme.typography.labelMedium)
+                            loose.forEach { line ->
+                                val packed = line.packed.toDoubleOrNull() ?: 0.0
+                                val picked = line.picked.toDoubleOrNull() ?: 0.0
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(buildString {
+                                            append(line.productLabel)
+                                            if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
+                                        }, style = MaterialTheme.typography.bodyMedium)
+                                        Text(stringResource(R.string.pick_qty_progress, line.packed, line.picked),
+                                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    if (picked > 0.0 && packed >= picked) {
+                                        Text(stringResource(R.string.pick_done), color = MaterialTheme.colorScheme.primary)
+                                    } else {
+                                        OutlinedButton(enabled = !actionLoading, onClick = {
+                                            scope.launchWorkflow(setLoading = { actionLoading = it }, onError = { message = it }, onSuccess = { message = it }) {
+                                                val res = container.api.updatePickListPackCut(
+                                                    pickId,
+                                                    UpdatePackCutRequest(packed_quantities = mapOf(pickId.toString() to mapOf(line.itemId.toString() to picked))),
+                                                )
+                                                if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
+                                                reloadPick(pickId)
+                                                backToListWhenDone(pickList)
+                                                res.body()?.message ?: msgSaved
+                                            }
+                                        }) { Text(stringResource(R.string.pick_btn_pack_line)) }
+                                    }
+                                }
+                            }
+                        }
+                        OutlinedTextField(
+                            value = barcodeInput,
+                            onValueChange = { barcodeInput = it },
+                            label = { Text(stringResource(R.string.label_barcode)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
+                                barcodeInput.trim().takeIf { it.isNotBlank() }?.let { container.rfidManager.recordWorkflowBarcode(it) }
+                                barcodeInput = ""
+                            }),
+                        )
+                        TextButton(onClick = { showAdjust = !showAdjust }) {
+                            Text(stringResource(if (showAdjust) R.string.pick_toggle_adjust_hide else R.string.pick_toggle_adjust))
+                        }
+                        if (showAdjust) {
+                            if (containerEdits.isNotEmpty()) {
+                                Text(stringResource(R.string.pick_section_container_packing), style = MaterialTheme.typography.labelMedium)
+                                WorkflowDataTable(
+                                    columns = listOf(
+                                        DataTableColumn(stringResource(R.string.pick_col_assignment), 1.4f),
+                                        DataTableColumn(colPicked, 0.45f),
+                                        DataTableColumn(stringResource(R.string.pick_col_packed), 0.45f),
+                                    ),
+                                    rows = containerEdits.map { line ->
+                                        listOf(
+                                            TableCell.Text(line.label),
+                                            TableCell.Text(DisplayFormat.qty(line.picked)),
+                                            TableCell.Text(line.packed),
+                                        )
+                                    },
+                                    emptyText = stringResource(R.string.pick_empty_container_lines),
+                                )
+                                containerEdits.forEachIndexed { index, line ->
                                     QtyField(
                                         value = line.packed,
-                                        onValueChange = { v -> lineEdits[index] = line.copy(packed = v) },
-                                        label = stringResource(R.string.pick_label_packed_qty, productPart),
-                                        fillValue = line.picked.toDoubleOrNull(),
+                                        onValueChange = { v -> containerEdits[index] = line.copy(packed = v) },
+                                        label = stringResource(R.string.pick_label_packed_container, line.label),
+                                        fillValue = line.picked,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
                             }
-                        }
-                        ErpPrimaryButton(text = stringResource(R.string.pick_btn_save_pack_cut), loading = actionLoading, onClick = {
-                            scope.launchWorkflow(
-                                setLoading = { actionLoading = it },
-                                onError = { message = it },
-                                onSuccess = { message = it },
-                            ) {
-                                val simplePacked = lineEdits
-                                    .filter { !it.isRoll && !it.hasContainerAssignments }
-                                    .associate { it.itemId.toString() to (it.packed.toDoubleOrNull() ?: 0.0) }
-                                val packedQuantities = simplePacked
-                                    .takeIf { it.isNotEmpty() }
-                                    ?.let { mapOf(pickId.toString() to it) }
-                                val cutLengths = lineEdits
-                                    .filter { it.isRoll }
-                                    .mapNotNull { line ->
-                                        val json = cutLengthsToJson(line.cutLengths)
-                                        if (json == "[]") null else rollCutGroupKey(line) to json
+                            WorkflowDataTable(
+                                columns = listOf(
+                                    DataTableColumn(colProduct, 0.9f),
+                                    DataTableColumn(colVar, 0.5f),
+                                    DataTableColumn(colRoll, 0.4f),
+                                    DataTableColumn(colPicked, 0.4f),
+                                    DataTableColumn(stringResource(R.string.pick_col_pack_cut), 0.5f),
+                                ),
+                                rows = lineEdits.map { line ->
+                                    val rollLabel = line.rollNumber
+                                        ?: line.rollLength?.let { DisplayFormat.qty(it) }
+                                        ?: if (line.isRoll) emDash else ""
+                                    val packCut = when {
+                                        line.isRoll -> line.cutLengths.ifBlank { emDash }
+                                        line.hasContainerAssignments -> packCutContainerLabel
+                                        else -> line.packed
                                     }
-                                    .toMap()
-                                    .takeIf { it.isNotEmpty() }
-                                val containerPacked = containerEdits
-                                    .associate { it.containerItemId.toString() to (it.packed.toDoubleOrNull() ?: 0.0) }
-                                    .takeIf { it.isNotEmpty() }
-                                    ?.let { mapOf(pickId.toString() to it) }
-                                val res = container.api.updatePickListPackCut(
-                                    pickId,
-                                    UpdatePackCutRequest(
-                                        packed_quantities = packedQuantities,
-                                        cut_lengths = cutLengths,
-                                        packed_container_quantities = containerPacked,
-                                    ),
-                                )
-                                if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-                                // Pack & cut is the last step: back to the list (refreshed, so a finished
-                                // pick drops off); the saved message shows there.
-                                container.workflowDraftStore.clear("pick_lines_$pickId")
-                                step = PickStep.List
-                                liveList.refresh()
-                                msgPackCutSaved
+                                    listOf(
+                                        TableCell.Text(line.productLabel),
+                                        TableCell.Text(line.variationLabel.ifBlank { emDash }),
+                                        TableCell.Text(rollLabel.ifBlank { emDash }),
+                                        TableCell.Text(qtyWithUnit(line.picked, line.quantityUnitSuffix, line.isRoll)),
+                                        TableCell.Text(packCut),
+                                    )
+                                },
+                                emptyText = stringResource(R.string.pick_empty_pack_lines),
+                            )
+                            lineEdits.forEachIndexed { index, line ->
+                                when {
+                                    line.isRoll -> {
+                                        val unit = line.quantityUnitSuffix ?: "m"
+                                        val productPart = buildString {
+                                            append(line.productLabel)
+                                            if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
+                                            line.rollNumber?.let { append(stringResource(R.string.pick_line_roll_suffix, it)) }
+                                        }
+                                        OutlinedTextField(
+                                            line.cutLengths,
+                                            { v -> lineEdits[index] = line.copy(cutLengths = v) },
+                                            label = {
+                                                Text(stringResource(R.string.pick_label_cut_lengths, unit, productPart))
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            minLines = 2,
+                                        )
+                                        Text(
+                                            stringResource(R.string.pick_cut_lengths_hint),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    !line.hasContainerAssignments -> {
+                                        val productPart = buildString {
+                                            append(line.productLabel)
+                                            if (line.variationLabel.isNotBlank()) append(" · ").append(line.variationLabel)
+                                        }
+                                        QtyField(
+                                            value = line.packed,
+                                            onValueChange = { v -> lineEdits[index] = line.copy(packed = v) },
+                                            label = stringResource(R.string.pick_label_packed_qty, productPart),
+                                            fillValue = line.picked.toDoubleOrNull(),
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                }
                             }
-                        })
+                            ErpPrimaryButton(text = stringResource(R.string.pick_btn_save_pack_cut), loading = actionLoading, onClick = {
+                                scope.launchWorkflow(
+                                    setLoading = { actionLoading = it },
+                                    onError = { message = it },
+                                    onSuccess = { message = it },
+                                ) {
+                                    val simplePacked = lineEdits
+                                        .filter { !it.isRoll && !it.hasContainerAssignments }
+                                        .associate { it.itemId.toString() to (it.packed.toDoubleOrNull() ?: 0.0) }
+                                    val packedQuantities = simplePacked
+                                        .takeIf { it.isNotEmpty() }
+                                        ?.let { mapOf(pickId.toString() to it) }
+                                    val cutLengths = lineEdits
+                                        .filter { it.isRoll }
+                                        .mapNotNull { line ->
+                                            val json = cutLengthsToJson(line.cutLengths)
+                                            if (json == "[]") null else rollCutGroupKey(line) to json
+                                        }
+                                        .toMap()
+                                        .takeIf { it.isNotEmpty() }
+                                    val containerPacked = containerEdits
+                                        .associate { it.containerItemId.toString() to (it.packed.toDoubleOrNull() ?: 0.0) }
+                                        .takeIf { it.isNotEmpty() }
+                                        ?.let { mapOf(pickId.toString() to it) }
+                                    val res = container.api.updatePickListPackCut(
+                                        pickId,
+                                        UpdatePackCutRequest(
+                                            packed_quantities = packedQuantities,
+                                            cut_lengths = cutLengths,
+                                            packed_container_quantities = containerPacked,
+                                        ),
+                                    )
+                                    if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
+                                    // Pack & cut is the last step: back to the list (refreshed, so a finished
+                                    // pick drops off); the saved message shows there.
+                                    container.workflowDraftStore.clear("pick_lines_$pickId")
+                                    step = PickStep.List
+                                    liveList.refresh()
+                                    msgPackCutSaved
+                                }
+                            })
+                        }
                     }
                 }
                 }

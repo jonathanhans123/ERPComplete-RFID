@@ -201,6 +201,18 @@ interface ErpApiService {
     @PUT("inventory-pick-lists/{id}/pack-cut")
     suspend fun updatePickListPackCut(@Path("id") id: Long, @Body body: UpdatePackCutRequest): Response<ApiEnvelope<JsonElement>>
 
+    /** One-tap confirm: pick_all, pick_line, pack_container, pack_all, cut_roll, cut_all. */
+    @POST("inventory-pick-lists/{id}/confirm")
+    suspend fun confirmPickList(@Path("id") id: Long, @Body body: PickConfirmRequest): Response<ApiEnvelope<JsonElement>>
+
+    /** A barcode or RFID code scanned on an open pick list, applied to the step (pick | pack | cut). */
+    @POST("inventory-pick-lists/{id}/scan")
+    suspend fun scanPickList(@Path("id") id: Long, @Body body: PickScanRequest): Response<ApiEnvelope<JsonElement>>
+
+    /** Finds the pick list of a scanned pick list number or bal label. */
+    @POST("inventory-pick-lists/scan-lookup")
+    suspend fun lookupPickListByScan(@Body body: PickScanLookupRequest): Response<ApiEnvelope<JsonElement>>
+
     @GET("products")
     suspend fun listProducts(
         @Query("search") search: String? = null,
@@ -562,6 +574,21 @@ data class UpdatePutawayRequest(
     val items: List<PutawayItemUpdate>,
     val complete_task: String? = null,
 )
+
+data class PickConfirmRequest(
+    val scope: String,
+    val ids: List<Long>? = null,
+    val quantity: Double? = null,
+    val complete: Boolean? = null,
+)
+
+data class PickScanRequest(
+    val code: String,
+    val step: String,
+    val quantity: Double? = null,
+)
+
+data class PickScanLookupRequest(val code: String)
 
 data class UpdatePickListRequest(
     val picked_quantities: Map<String, Double>,

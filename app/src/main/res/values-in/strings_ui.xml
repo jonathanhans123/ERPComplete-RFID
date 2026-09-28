@@ -803,4 +803,23 @@
     <string name="pager_next">Berikutnya</string>
     <string name="pager_page_of">Hal %1$d dari %2$d</string>
     <string name="pager_lines">%1$d baris</string>
+    <string name="pick_btn_pick_all_complete">Ambil semua &amp; selesai</string>
+    <string name="pick_btn_pick_line">Ambil</string>
+    <string name="pick_btn_undo">Batal</string>
+    <string name="pick_btn_pack_cut_all">Pak &amp; potong semua</string>
+    <string name="pick_btn_pack_bal">Pak bal</string>
+    <string name="pick_btn_pack_line">Pak</string>
+    <string name="pick_btn_cut_roll">Potong sesuai rencana</string>
+    <string name="pick_done">Selesai</string>
+    <string name="pick_toggle_adjust">Ubah jumlah manual</string>
+    <string name="pick_toggle_adjust_hide">Sembunyikan ubah manual</string>
+    <string name="pick_scan_hint_pick">Pindai produk, rol atau label bal (barcode atau RFID) untuk mengambil, atau tekan Ambil.</string>
+    <string name="pick_scan_hint_pack">Pindai label bal untuk mengepak seluruh bal, rol untuk dipotong sesuai rencana, atau produk untuk mengepak satu.</string>
+    <string name="pick_scan_hint_list">Pindai pick list atau label bal untuk membukanya.</string>
+    <string name="pick_section_bals">Bal</string>
+    <string name="pick_section_rolls">Rol untuk dipotong</string>
+    <string name="pick_section_loose">Barang lepas</string>
+    <string name="pick_qty_progress">%1$s / %2$s</string>
+    <string name="pick_scan_not_found">Tidak ada pick list untuk kode %1$s</string>
+    <string name="pick_success_confirmed">Tersimpan</string>
 </resources>

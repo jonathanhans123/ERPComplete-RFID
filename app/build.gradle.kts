@@ -37,6 +37,9 @@ android {
         debug {
         }
         release {
+            // Internal distribution via the ERP downloads page: sign with the
+            // debug keys (same practice as the Messenger app) so the APK installs.
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

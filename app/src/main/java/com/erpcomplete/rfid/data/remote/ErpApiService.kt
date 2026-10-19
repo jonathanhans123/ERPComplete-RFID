@@ -3,6 +3,7 @@ package com.erpcomplete.rfid.data.remote
 import com.erpcomplete.rfid.data.model.BusinessUnitOption
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -12,6 +13,9 @@ import retrofit2.http.GET
 import retrofit2.http.HeaderMap
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.Multipart
+import retrofit2.http.Part
+import retrofit2.http.PartMap
 import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.Url
@@ -100,6 +104,14 @@ interface ErpApiService {
 
     @POST("goods-receipts")
     suspend fun createGoodsReceipt(@Body body: CreateGoodsReceiptRequest): Response<ApiEnvelope<JsonElement>>
+
+    /** Create with the delivery note photo (required by the server for purchase order receipts). */
+    @Multipart
+    @POST("goods-receipts")
+    suspend fun createGoodsReceiptWithDocument(
+        @PartMap fields: Map<String, @JvmSuppressWildcards RequestBody>,
+        @Part document: MultipartBody.Part,
+    ): Response<ApiEnvelope<JsonElement>>
 
     @PUT("goods-receipts/{id}")
     suspend fun updateGoodsReceipt(
@@ -521,6 +533,9 @@ data class FirmwareCheckResult(
     val update_available: Boolean = false,
     val download_url: String? = null,
     val file_name: String? = null,
+    /** SHA-256 of the firmware file as the server fetched it; the app flashes nothing it cannot match. */
+    val sha256: String? = null,
+    val size_bytes: Long? = null,
     val support_page: String? = null,
     val checked_at: String? = null,
     val catalog_source: String? = null,

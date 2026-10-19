@@ -394,6 +394,7 @@ class RfidManager(
                         availableVersion = result.latest_version,
                         downloadUrl = result.download_url,
                         fileName = result.file_name,
+                        sha256 = result.sha256,
                         message = appContext.getString(
                             R.string.rfid_firmware_available,
                             result.latest_version,
@@ -424,6 +425,22 @@ class RfidManager(
                 )
                 return@launch
             }
+            // Never flash a reader with a file that cannot be verified: https on zebra.com and a server checksum.
+            val expectedSha256 = state.sha256
+            if (!ZebraFirmwareRepository.isTrustedFirmwareUrl(url)) {
+                _firmwareUpdate.value = state.copy(
+                    phase = FirmwareUpdateState.Phase.FAILED,
+                    message = appContext.getString(R.string.error_firmware_untrusted_source),
+                )
+                return@launch
+            }
+            if (expectedSha256.isNullOrBlank()) {
+                _firmwareUpdate.value = state.copy(
+                    phase = FirmwareUpdateState.Phase.FAILED,
+                    message = appContext.getString(R.string.error_firmware_no_checksum),
+                )
+                return@launch
+            }
             val target = File(appContext.cacheDir, "firmware/${fileName.lowercase()}")
             _firmwareUpdate.value = state.copy(
                 phase = FirmwareUpdateState.Phase.DOWNLOADING,
@@ -431,7 +448,7 @@ class RfidManager(
                 message = appContext.getString(R.string.rfid_firmware_downloading),
             )
             runCatching {
-                firmwareRepository.downloadFirmware(url, target) { progress ->
+                firmwareRepository.downloadFirmware(url, target, expectedSha256) { progress ->
                     _firmwareUpdate.value = _firmwareUpdate.value.copy(
                         progressPercent = progress,
                     )

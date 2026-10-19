@@ -112,6 +112,8 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.asRequestBody
 import java.time.LocalDate
 import java.util.UUID
 
@@ -524,6 +526,7 @@ fun ReceiveScreen(
     val errLoadReceipt = stringResource(R.string.gr_error_load_receipt)
     val errEmptyGr = stringResource(R.string.gr_error_receipt_not_loaded)
     val errChooseSource = stringResource(R.string.gr_error_choose_source)
+    val errDeliveryPhoto = stringResource(R.string.gr_error_delivery_photo_required)
     val errChooseWarehouse = stringResource(R.string.gr_error_choose_warehouse)
     val errChooseReceiver = stringResource(R.string.gr_error_choose_receiver)
     val errCreatedEmpty = stringResource(R.string.gr_error_created_empty)
@@ -556,6 +559,8 @@ fun ReceiveScreen(
     var vehicleNumber by remember { mutableStateOf("") }
     var driverName by remember { mutableStateOf("") }
     var receiptNotes by remember { mutableStateOf("") }
+    // Delivery note (surat jalan) photo: the server requires one for purchase order receipts.
+    var deliveryPhoto by remember { mutableStateOf<java.io.File?>(null) }
     var createdPutawayTaskId by remember { mutableStateOf<Long?>(null) }
     val lineDrafts = remember { mutableStateListOf<GrLineDraft>() }
     var lineHighlights by remember { mutableStateOf<Map<String, ScanMatchStatus>>(emptyMap()) }
@@ -1169,6 +1174,13 @@ fun ReceiveScreen(
                             onLineHighlightsChanged = { lineHighlights = it },
                             onClear = { container.rfidManager.clearScannedTags() },
                         )
+                        if (sourceType == "purchase_order") {
+                            DeliveryPhotoField(
+                                photo = deliveryPhoto,
+                                onPhoto = { deliveryPhoto = it },
+                                onError = { message = it },
+                            )
+                        }
                         ErpPrimaryButton(
                             text = stringResource(R.string.gr_btn_save_receipt),
                             loading = actionLoading,
@@ -1240,8 +1252,23 @@ fun ReceiveScreen(
                                         total_received_quantity = items.sumOf { it.received_quantity ?: 0.0 },
                                         items = items,
                                     )
-                                    val res = container.api.createGoodsReceipt(body)
+                                    val photo = deliveryPhoto
+                                    if (sourceType == "purchase_order" && photo == null) error(errDeliveryPhoto)
+                                    val res = if (photo != null && sourceType == "purchase_order") {
+                                        val document = okhttp3.MultipartBody.Part.createFormData(
+                                            "delivery_document",
+                                            photo.name,
+                                            photo.asRequestBody("image/jpeg".toMediaType()),
+                                        )
+                                        container.api.createGoodsReceiptWithDocument(
+                                            com.erpcomplete.rfid.util.MultipartForm.fields(body),
+                                            document,
+                                        )
+                                    } else {
+                                        container.api.createGoodsReceipt(body)
+                                    }
                                     if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
+                                    deliveryPhoto = null
                                     val created = WorkflowJson.envelopeObject(res)
                                         ?: error(errCreatedEmpty)
                                     val newId = created.long("id") ?: error(errCreatedNoId)
@@ -2018,4 +2045,77 @@ private fun GrSourceSelectionSection(
             onClear = onClearSource,
         )
     }
+}
+
+/** Takes the delivery note photo with the camera app; oversized photos are downscaled to fit the upload limit. */
+@Composable
+private fun DeliveryPhotoField(
+    photo: java.io.File?,
+    onPhoto: (java.io.File?) -> Unit,
+    onError: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    var pending by remember { mutableStateOf<java.io.File?>(null) }
+    val denied = stringResource(R.string.gr_delivery_photo_camera_denied)
+    val capture = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.TakePicture(),
+    ) { ok ->
+        val taken = pending
+        pending = null
+        if (ok && taken != null && taken.length() > 0) {
+            onPhoto(shrinkForUpload(taken))
+        } else {
+            taken?.delete()
+        }
+    }
+
+    fun launchCamera() {
+        val dir = java.io.File(context.cacheDir, "delivery").apply { mkdirs() }
+        val file = java.io.File(dir, "delivery_note_${System.currentTimeMillis()}.jpg")
+        pending = file
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        capture.launch(uri)
+    }
+
+    // The manifest declares CAMERA, so the camera app can only be launched once it is granted.
+    val permission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) launchCamera() else onError(denied) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            if (photo != null) {
+                stringResource(R.string.gr_delivery_photo_attached)
+            } else {
+                stringResource(R.string.gr_delivery_photo_required_hint)
+            },
+            style = MaterialTheme.typography.labelMedium,
+        )
+        androidx.compose.material3.OutlinedButton(
+            onClick = {
+                val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.CAMERA,
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (granted) launchCamera() else permission.launch(android.Manifest.permission.CAMERA)
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(if (photo != null) R.string.gr_delivery_photo_retake else R.string.gr_delivery_photo_take))
+        }
+    }
+}
+
+private const val MAX_UPLOAD_BYTES = 9L * 1024 * 1024
+
+/** Photos under the server's 10 MB limit are sent untouched (keeps orientation data); bigger ones are halved in size. */
+private fun shrinkForUpload(file: java.io.File): java.io.File {
+    if (file.length() <= MAX_UPLOAD_BYTES) return file
+    val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }
+    val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath, options) ?: return file
+    val out = java.io.File(file.parentFile, "small_${file.name}")
+    out.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it) }
+    bitmap.recycle()
+    file.delete()
+    return out
 }

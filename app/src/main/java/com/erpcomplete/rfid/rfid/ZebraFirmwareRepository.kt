@@ -7,10 +7,12 @@ import com.erpcomplete.rfid.data.remote.FirmwareCheckResult
 import com.erpcomplete.rfid.util.ApiErrorParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 class ZebraFirmwareRepository(
@@ -32,8 +34,11 @@ class ZebraFirmwareRepository(
     suspend fun downloadFirmware(
         downloadUrl: String,
         targetFile: File,
+        expectedSha256: String,
         onProgress: (Int) -> Unit,
     ): File = withContext(Dispatchers.IO) {
+        if (!isTrustedFirmwareUrl(downloadUrl)) error(appContext.getString(R.string.error_firmware_untrusted_source))
+        val digest = MessageDigest.getInstance("SHA-256")
         val request = Request.Builder().url(downloadUrl).get().build()
         downloadClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
@@ -50,6 +55,7 @@ class ZebraFirmwareRepository(
                         val read = input.read(buffer)
                         if (read <= 0) break
                         output.write(buffer, 0, read)
+                        digest.update(buffer, 0, read)
                         downloaded += read
                         if (total > 0L) {
                             onProgress(((downloaded * 100L) / total).toInt().coerceIn(0, 100))
@@ -58,7 +64,21 @@ class ZebraFirmwareRepository(
                 }
             }
         }
+        val actual = digest.digest().joinToString("") { "%02x".format(it) }
+        if (!actual.equals(expectedSha256.trim(), ignoreCase = true)) {
+            targetFile.delete()
+            error(appContext.getString(R.string.error_firmware_checksum_mismatch))
+        }
         onProgress(100)
         targetFile
+    }
+
+    companion object {
+        /** Firmware comes only from https links on zebra.com; anything else is never downloaded. */
+        fun isTrustedFirmwareUrl(url: String): Boolean {
+            val parsed = url.toHttpUrlOrNull() ?: return false
+            val host = parsed.host.lowercase()
+            return parsed.isHttps && (host == "zebra.com" || host.endsWith(".zebra.com"))
+        }
     }
 }

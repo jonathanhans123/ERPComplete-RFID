@@ -26,7 +26,6 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import javax.net.ssl.HttpsURLConnection
 
 class AppContainer(context: Context) {
 
@@ -65,27 +64,27 @@ class AppContainer(context: Context) {
     private fun isFresh(token: String): Boolean =
         token == freshToken && System.currentTimeMillis() - freshTokenAtMs < FRESH_TOKEN_WINDOW_MS
 
-    /** VPS is reached by IPv4; TLS cert may list the cloud hostname. */
-    private val hostnameVerifier = javax.net.ssl.HostnameVerifier { hostname, session ->
-        hostname == "187.77.125.241" ||
-            HttpsURLConnection.getDefaultHostnameVerifier().verify(hostname, session)
+    /**
+     * The API is reached by its hostname, so the certificate (Let's Encrypt for that name) is verified
+     * normally. Some mobile networks cannot resolve the name; only then fall back to the VPS address. The TLS
+     * handshake still uses the hostname for SNI and certificate verification, so this cannot be used to
+     * impersonate the server.
+     */
+    private val fallbackDns = object : okhttp3.Dns {
+        override fun lookup(hostname: String): List<java.net.InetAddress> =
+            try {
+                okhttp3.Dns.SYSTEM.lookup(hostname)
+            } catch (e: java.net.UnknownHostException) {
+                if (hostname.equals(BuildConfig.API_HOST, ignoreCase = true) && BuildConfig.API_FALLBACK_IP.isNotBlank()) {
+                    listOf(java.net.InetAddress.getByName(BuildConfig.API_FALLBACK_IP))
+                } else {
+                    throw e
+                }
+            }
     }
 
     private val apiBaseUrl: String
         get() = BuildConfig.API_BASE_URL.trimEnd('/')
-
-    private val nginxHostInterceptor = Interceptor { chain ->
-        val request = chain.request()
-        if (request.url.host == "187.77.125.241") {
-            chain.proceed(
-                request.newBuilder()
-                    .header("Host", BuildConfig.NGINX_HOST)
-                    .build(),
-            )
-        } else {
-            chain.proceed(request)
-        }
-    }
 
     private val authInterceptor = Interceptor { chain ->
         val builder = chain.request().newBuilder()
@@ -158,7 +157,6 @@ class AppContainer(context: Context) {
                 Request.Builder()
                     .url("$apiBaseUrl/auth/refresh")
                     .post("".toRequestBody(null))
-                    .header("Host", BuildConfig.NGINX_HOST)
                     .header("Authorization", "Bearer $token")
                     .header("Accept", "application/json")
                     .build(),
@@ -183,16 +181,14 @@ class AppContainer(context: Context) {
     private val refreshClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
-        .hostnameVerifier(hostnameVerifier)
-        .addInterceptor(nginxHostInterceptor)
+        .dns(fallbackDns)
         .build()
 
     private val okHttp = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
-        .hostnameVerifier(hostnameVerifier)
+        .dns(fallbackDns)
         .authenticator(tokenAuthenticator)
-        .addInterceptor(nginxHostInterceptor)
         .addInterceptor(authInterceptor)
         .apply {
             if (BuildConfig.DEBUG) {

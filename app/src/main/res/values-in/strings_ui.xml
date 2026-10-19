@@ -720,6 +720,15 @@
 4. Ketuk \"Pembaca terpindai — hubungkan sekarang\".</string>
     <string name="connect_scan_rejected">Barcode tidak dikenali sebagai kode pairing RFD90: %1$s</string>
     <string name="rfid_error_reader_not_bonded">RFD90 belum dipasangkan. Pindai barcode ponsel ini dengan pemindai terlebih dahulu, terima permintaan pairing Android, lalu ketuk Hubungkan lagi.</string>
+    <string name="error_firmware_untrusted_source">Firmware harus berasal dari zebra.com melalui https. Unduhan dibatalkan.</string>
+    <string name="error_firmware_no_checksum">Server tidak dapat memverifikasi berkas firmware ini, jadi tidak akan dipasang. Coba lagi nanti atau perbarui dengan alat Zebra.</string>
+    <string name="error_firmware_checksum_mismatch">Firmware yang diunduh tidak cocok dengan checksum terverifikasi. Berkas dihapus.</string>
+    <string name="gr_error_delivery_photo_required">Ambil foto surat jalan sebelum menyimpan.</string>
+    <string name="gr_delivery_photo_take">Ambil foto surat jalan</string>
+    <string name="gr_delivery_photo_retake">Ambil ulang foto surat jalan</string>
+    <string name="gr_delivery_photo_attached">Foto surat jalan terlampir</string>
+    <string name="gr_delivery_photo_required_hint">Foto surat jalan wajib</string>
+    <string name="gr_delivery_photo_camera_denied">Izin kamera diperlukan untuk memotret surat jalan.</string>
     <string name="error_not_found">Tidak ditemukan. Mungkin sudah dihapus atau milik workspace lain.</string>
     <string name="error_request_failed">Permintaan gagal (%1$d).</string>
     <string name="error_web_page_not_api">Mencapai halaman web, bukan API. Periksa URL API di Pengaturan.</string>

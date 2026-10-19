@@ -8,6 +8,7 @@ data class FirmwareUpdateState(
     val availableVersion: String? = null,
     val downloadUrl: String? = null,
     val fileName: String? = null,
+    val sha256: String? = null,
     val localFilePath: String? = null,
 ) {
     enum class Phase {

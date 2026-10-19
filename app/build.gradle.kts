@@ -16,9 +16,10 @@ android {
         versionCode = 14
         versionName = "0.1.13"
 
-        buildConfigField("String", "API_BASE_URL", "\"https://187.77.125.241/api/v1\"")
-        // Host header for the production VPS (reached by IP); defined here so every flavor compiles.
-        buildConfigField("String", "NGINX_HOST", "\"srv1804550.hstgr.cloud\"")
+        buildConfigField("String", "API_BASE_URL", "\"https://srv1804550.hstgr.cloud/api/v1\"")
+        // Hostname of the production API and the address used only if DNS cannot resolve it (see AppContainer).
+        buildConfigField("String", "API_HOST", "\"srv1804550.hstgr.cloud\"")
+        buildConfigField("String", "API_FALLBACK_IP", "\"187.77.125.241\"")
     }
 
     flavorDimensions += "target"
@@ -31,7 +32,7 @@ android {
         }
         create("device") {
             dimension = "target"
-            buildConfigField("String", "API_BASE_URL", "\"https://187.77.125.241/api/v1\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://srv1804550.hstgr.cloud/api/v1\"")
             manifestPlaceholders["cleartextTraffic"] = "false"
         }
     }

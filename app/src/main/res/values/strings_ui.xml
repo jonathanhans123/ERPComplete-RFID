@@ -716,6 +716,15 @@
     <string name="error_check_input">Please check your input.</string>
     <string name="error_too_many_attempts">Too many attempts. Wait about a minute, then try again.</string>
     <string name="error_server">Server error (%1$d). Try again later.</string>
+    <string name="error_firmware_untrusted_source">Firmware must come from zebra.com over https. Download cancelled.</string>
+    <string name="error_firmware_no_checksum">The server could not verify this firmware file, so it will not be installed. Try again later or update with Zebra&#8217;s tools.</string>
+    <string name="error_firmware_checksum_mismatch">The downloaded firmware does not match the verified checksum. It was deleted.</string>
+    <string name="gr_error_delivery_photo_required">Take a photo of the delivery note (surat jalan) before saving.</string>
+    <string name="gr_delivery_photo_take">Take delivery note photo</string>
+    <string name="gr_delivery_photo_retake">Retake delivery note photo</string>
+    <string name="gr_delivery_photo_attached">Delivery note photo attached</string>
+    <string name="gr_delivery_photo_required_hint">Delivery note photo required</string>
+    <string name="gr_delivery_photo_camera_denied">Camera permission is needed to photograph the delivery note.</string>
     <string name="error_not_found">Not found. It may have been removed or belong to another workspace.</string>
     <string name="error_request_failed">Request failed (%1$d).</string>
     <string name="error_web_page_not_api">Reached a web page instead of the API. Contact your administrator.</string>

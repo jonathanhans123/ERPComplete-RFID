@@ -527,9 +527,17 @@ fun PickScreen(container: AppContainer, onBack: () -> Unit) {
                 if (pickLoading || pickLoadedId != pickId) {
                     PickListDetailSkeleton(Modifier.weight(1f))
                 } else {
+                // The server refuses pack/cut until every line is fully picked, so don't open that tab before then.
+                val packTabEnabled = lineEdits.isNotEmpty() &&
+                    lineEdits.all { (it.picked.toDoubleOrNull() ?: 0.0) >= it.requested }
                 TabRow(detailTab) {
                     Tab(selected = detailTab == 0, onClick = { detailTab = 0 }, text = { Text(stringResource(R.string.pick_tab_pick)) })
-                    Tab(selected = detailTab == 1, onClick = { detailTab = 1 }, text = { Text(stringResource(R.string.pick_tab_pack_cut)) })
+                    Tab(
+                        selected = detailTab == 1,
+                        onClick = { detailTab = 1 },
+                        enabled = packTabEnabled || pickList?.string("pick_status") == "completed",
+                        text = { Text(stringResource(R.string.pick_tab_pack_cut)) },
+                    )
                 }
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (detailTab == 0) {

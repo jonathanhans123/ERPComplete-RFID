@@ -233,6 +233,8 @@ internal fun RelocationFormScreen(
             warehouseId = whId,
             fromWarehouseLocationId = fromId,
             variationId = selectedVariation?.id,
+            batchNumber = batchNumber.trim().ifBlank { null },
+            rollNumber = rollNumber.trim().ifBlank { null },
         )
         if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
         val body = res.body()?.asJsonObject
@@ -425,6 +427,7 @@ internal fun RelocationFormScreen(
                             quantity = qty,
                             variationId = selectedVariation?.id,
                             rollNumber = rollNumber.ifBlank { null },
+                            batchNumber = batchNumber.ifBlank { null },
                         )
                         val body = CreateStockRelocationRequest(
                             warehouse_id = whId,
@@ -623,6 +626,21 @@ internal fun RelocationDetailScreen(
                         }
                     },
                 )
+                androidx.compose.material3.OutlinedButton(
+                    onClick = {
+                        scope.launchWorkflow({ actionLoading = it }, { message = it }) {
+                            val res = container.api.rejectStockRelocation(
+                                relocationId,
+                                com.erpcomplete.rfid.data.remote.RejectStockRelocationRequest(),
+                            )
+                            if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
+                            onChanged()
+                            null
+                        }
+                    },
+                    enabled = !actionLoading,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.action_reject)) }
             }
         }
     }
@@ -648,6 +666,7 @@ private fun buildRelocationProductPayload(
     quantity: Double,
     variationId: Long?,
     rollNumber: String?,
+    batchNumber: String? = null,
 ): RelocationProductPayload {
     return if (isRoll) {
         RelocationProductPayload(
@@ -670,6 +689,7 @@ private fun buildRelocationProductPayload(
             type = "simple",
             quantity = quantity,
             variation_value_id = variationId,
+            batch_number = batchNumber,
         )
     }
 }

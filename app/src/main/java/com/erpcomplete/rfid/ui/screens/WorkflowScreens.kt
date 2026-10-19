@@ -57,7 +57,11 @@ fun CycleCountScreen(container: AppContainer, onBack: () -> Unit) {
         ErpPrimaryButton(text = stringResource(R.string.cycle_count_btn_start_session), onClick = {
             scope.launch {
                 runCatching {
-                    val res = container.api.startSession(StartSessionRequest(locationId.toLongOrNull()))
+                    // Blank = whole warehouse; anything else must be a valid id instead of silently becoming "none".
+                    val location = locationId.trim().takeIf { it.isNotEmpty() }?.let {
+                        it.toLongOrNull() ?: error(context.getString(R.string.cycle_count_error_invalid_location))
+                    }
+                    val res = container.api.startSession(StartSessionRequest(location))
                     if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                     sessionId = res.body()?.data?.session?.get("session_uuid")?.toString()
                     res.body()?.message ?: context.getString(R.string.cycle_count_success_session_started)
@@ -80,7 +84,20 @@ fun CycleCountScreen(container: AppContainer, onBack: () -> Unit) {
                     val res = container.api.submitSession(sid, SubmitSessionRequest(epcs))
                     if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
                     queueReads(container, "cycle_count", epcs)
-                    res.body()?.message ?: context.getString(R.string.cycle_count_success_submitted)
+                    val variance = res.body()?.data?.variance
+                    fun count(key: String) = (variance?.get(key) as? Number)?.toInt()
+                    val expected = count("expected_count")
+                    if (variance != null && expected != null && expected > 0) {
+                        context.getString(
+                            R.string.cycle_count_variance_summary,
+                            count("scanned_count") ?: 0,
+                            expected,
+                            count("missing_count") ?: 0,
+                            count("unexpected_count") ?: 0,
+                        )
+                    } else {
+                        res.body()?.message ?: context.getString(R.string.cycle_count_success_submitted)
+                    }
                 }.onSuccess { message = it }.onFailure { message = it.message }
             }
         })
@@ -110,5 +127,6 @@ internal suspend fun queueReads(container: AppContainer, workflow: String, epcs:
     if (epcs.isEmpty()) return
     val sessionId = UUID.randomUUID().toString()
     val reads = epcs.map { ReadItem(it, idempotency_key = "$sessionId-$it") }
-    container.syncRepository.queueReads(sessionId, workflow, reads)
+    // The server accepts at most 1000 reads per request; a bigger batch would be rejected and dropped.
+    reads.chunked(1000).forEach { container.syncRepository.queueReads(sessionId, workflow, it) }
 }

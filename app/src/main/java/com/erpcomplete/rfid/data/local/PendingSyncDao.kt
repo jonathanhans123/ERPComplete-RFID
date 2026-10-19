@@ -19,6 +19,10 @@ interface PendingSyncDao {
     @Query("UPDATE pending_sync SET attemptCount = attemptCount + 1, lastError = :error WHERE id = :id")
     suspend fun markFailed(id: Long, error: String)
 
+    /** A rejected request (4xx) will never succeed on retry: exhaust its attempts so it shows as failed at once. */
+    @Query("UPDATE pending_sync SET attemptCount = :attempts, lastError = :error WHERE id = :id")
+    suspend fun markExhausted(id: Long, attempts: Int, error: String)
+
     @Query("SELECT COUNT(*) FROM pending_sync")
     suspend fun count(): Int
 

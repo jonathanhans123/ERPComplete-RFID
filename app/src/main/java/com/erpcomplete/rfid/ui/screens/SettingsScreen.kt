@@ -106,6 +106,9 @@ fun SettingsScreen(
 
     var prefixDraft by remember { mutableStateOf(companyPrefix.orEmpty()) }
     var voidEpc by remember { mutableStateOf("") }
+    var confirmVoid by remember { mutableStateOf(false) }
+    var confirmSignOut by remember { mutableStateOf(false) }
+    val pendingSyncCount by container.syncRepository.pendingCount.collectAsState()
     var message by remember { mutableStateOf<String?>(null) }
     var confirmWorkspaceChange by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -121,6 +124,57 @@ fun SettingsScreen(
 
     LaunchedEffect(isConnected) {
         if (isConnected) container.rfidManager.refreshDiagnostics()
+    }
+
+    fun signOut() {
+        scope.launch {
+            runCatching { container.api.logout() }
+            container.syncRepository.clearAll()
+            container.authStore.clear()
+            container.rfidManager.reset()
+            rootNavController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
+        }
+    }
+
+    if (confirmSignOut) {
+        AlertDialog(
+            onDismissRequest = { confirmSignOut = false },
+            title = { Text(stringResource(R.string.settings_sign_out_pending_title)) },
+            text = { Text(stringResource(R.string.settings_sign_out_pending_message, pendingSyncCount)) },
+            confirmButton = {
+                TextButton(onClick = { confirmSignOut = false; signOut() }) { Text(stringResource(R.string.settings_sign_out)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmSignOut = false }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+
+    if (confirmVoid) {
+        AlertDialog(
+            onDismissRequest = { confirmVoid = false },
+            title = { Text(stringResource(R.string.settings_void_confirm_title)) },
+            text = { Text(stringResource(R.string.settings_void_confirm_message, voidEpc.trim())) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmVoid = false
+                        scope.launch {
+                            runCatching {
+                                val epc = voidEpc.trim()
+                                val res = container.api.voidTag(epc)
+                                if (!res.isSuccessful) error(com.erpcomplete.rfid.util.ApiErrorParser.httpMessage(res, authenticated = true))
+                                voidEpc = ""
+                                context.getString(R.string.settings_void_success)
+                            }.onSuccess { message = it }.onFailure { message = it.message }
+                        }
+                    },
+                ) { Text(stringResource(R.string.settings_void_tag)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmVoid = false }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
     }
 
     if (confirmWorkspaceChange) {
@@ -553,15 +607,10 @@ fun SettingsScreen(
                 ErpPrimaryButton(
                     text = stringResource(R.string.settings_void_tag),
                     onClick = {
-                        scope.launch {
-                            runCatching {
-                                val epc = voidEpc.trim()
-                                if (epc.isBlank()) error(context.getString(R.string.settings_void_enter_epc))
-                                val res = container.api.voidTag(epc)
-                                if (!res.isSuccessful) error(com.erpcomplete.rfid.util.ApiErrorParser.httpMessage(res, authenticated = true))
-                                voidEpc = ""
-                                context.getString(R.string.settings_void_success)
-                            }.onSuccess { message = it }.onFailure { message = it.message }
+                        if (voidEpc.isBlank()) {
+                            message = context.getString(R.string.settings_void_enter_epc)
+                        } else {
+                            confirmVoid = true
                         }
                     },
                 )
@@ -571,13 +620,8 @@ fun SettingsScreen(
 
             OutlinedButton(
                 onClick = {
-                    scope.launch {
-                        runCatching { container.api.logout() }
-                        container.syncRepository.clearAll()
-                        container.authStore.clear()
-                        container.rfidManager.reset()
-                        rootNavController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
-                    }
+                    // Signing out clears the offline queue; don't silently discard work that has not synced yet.
+                    if (pendingSyncCount > 0) confirmSignOut = true else signOut()
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(14.dp),

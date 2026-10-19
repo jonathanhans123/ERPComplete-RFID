@@ -79,14 +79,8 @@ fun rememberScanResolver(
                 }
             }
         }.onFailure {
-            // Keep PENDING on transient errors; only mark unknown when response was parsed empty
-            if (!StatusMessage.isOfflineSyncMessage(it.message)) {
-                normalized.forEach { code ->
-                    if (entries[code]?.status == ScanResolveStatus.PENDING) {
-                        entries[code] = ScanResolveEntry(ScanResolveStatus.UNKNOWN)
-                    }
-                }
-            }
+            // A failed lookup (401/403/429/5xx, offline) says nothing about the tags: leave them PENDING so they are
+            // retried, instead of showing registered tags as "not registered". UNKNOWN comes only from resolved=false.
         }
     }
 

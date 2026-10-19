@@ -119,8 +119,8 @@ private suspend fun loadHomeAnalytics(
             warehouseId = whId,
             perPage = 1,
         )
-        if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-        WorkflowJson.envelopeCount(res)
+        // A role without access to one module (403) must not blank the whole dashboard.
+        if (res.isSuccessful) WorkflowJson.envelopeCount(res) else 0
     }
     val pick = async {
         val res = container.api.listPickLists(
@@ -128,8 +128,7 @@ private suspend fun loadHomeAnalytics(
             warehouseId = whId,
             perPage = 1,
         )
-        if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-        WorkflowJson.envelopeCount(res)
+        if (res.isSuccessful) WorkflowJson.envelopeCount(res) else 0
     }
     val opname = async {
         val res = container.api.listStockOpnames(
@@ -137,8 +136,7 @@ private suspend fun loadHomeAnalytics(
             warehouseId = whId,
             perPage = 1,
         )
-        if (!res.isSuccessful) error(ApiErrorParser.httpMessage(res))
-        WorkflowJson.envelopeCount(res)
+        if (res.isSuccessful) WorkflowJson.envelopeCount(res) else 0
     }
     val receipts = async {
         val pending = container.api.listGoodsReceipts(status = "pending", warehouseId = whId, perPage = 1)

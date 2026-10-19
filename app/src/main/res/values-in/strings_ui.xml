@@ -308,6 +308,8 @@
     <string name="cycle_count_success_session_started">Sesi dimulai</string>
     <string name="cycle_count_error_start_session_first">Mulai sesi terlebih dahulu</string>
     <string name="cycle_count_success_submitted">Terkirim</string>
+    <string name="cycle_count_variance_summary">Terkirim: %1$d dari %2$d yang diharapkan terpindai, %3$d hilang, %4$d tak terduga.</string>
+    <string name="cycle_count_error_invalid_location">Lokasi harus berupa angka, atau kosongkan.</string>
     <string name="inventory_title">Inventaris</string>
     <string name="inventory_subtitle">Data master &amp; stok tersedia</string>
     <string name="inventory_perm_adjust_denied">Anda tidak memiliki izin untuk membuat penyesuaian stok.</string>
@@ -340,6 +342,7 @@
     <string name="location_type_picking">Pengambilan</string>
     <string name="location_type_shipping">Pengiriman</string>
     <string name="location_type_quality">Kualitas</string>
+    <string name="location_type_defective">Rusak</string>
     <string name="inventory_stock_picker_title">Stok per lokasi</string>
     <string name="inventory_stock_picker_subtitle">Pilih bin untuk melihat stok</string>
     <string name="inventory_stock_no_bins">Tidak ada lokasi bin ditemukan.</string>
@@ -711,6 +714,13 @@
     <string name="error_check_input">Periksa input Anda.</string>
     <string name="error_too_many_attempts">Terlalu banyak percobaan. Tunggu sekitar satu menit, lalu coba lagi.</string>
     <string name="error_server">Kesalahan server (%1$d). Coba lagi nanti.</string>
+    <string name="connect_phone_barcode_steps">1. Masukkan alamat Bluetooth ponsel ini di bawah (Pengaturan → Tentang ponsel → Status, atau manual).
+2. Tampilkan barcode di layar ini.
+3. Pada RFD90, gunakan Scan-to-Connect dan pindai layar INI dengan pemindai (bukan kamera ponsel).
+4. Ketuk \"Pembaca terpindai — hubungkan sekarang\".</string>
+    <string name="connect_scan_rejected">Barcode tidak dikenali sebagai kode pairing RFD90: %1$s</string>
+    <string name="rfid_error_reader_not_bonded">RFD90 belum dipasangkan. Pindai barcode ponsel ini dengan pemindai terlebih dahulu, terima permintaan pairing Android, lalu ketuk Hubungkan lagi.</string>
+    <string name="error_not_found">Tidak ditemukan. Mungkin sudah dihapus atau milik workspace lain.</string>
     <string name="error_request_failed">Permintaan gagal (%1$d).</string>
     <string name="error_web_page_not_api">Mencapai halaman web, bukan API. Periksa URL API di Pengaturan.</string>
     <string name="error_something_wrong">Terjadi kesalahan</string>

@@ -1174,6 +1174,7 @@ private fun AdjustmentFormScreen(
             warehouseId = whId,
             variationId = selectedVariation?.id,
             warehouseLocationId = selectedLocation?.id?.takeUnless { it == UNMARKED_STOCK_LOCATION_ID },
+            unlocated = if (selectedLocation?.id == UNMARKED_STOCK_LOCATION_ID) true else null,
             batchNumber = if (!isRollProduct) batchNumber.ifBlank { null } else null,
             rollNumber = if (isRollProduct) rollNumber.ifBlank { null } else null,
         )

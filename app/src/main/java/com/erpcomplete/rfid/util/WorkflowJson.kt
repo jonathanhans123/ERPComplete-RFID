@@ -69,26 +69,20 @@ object WorkflowJson {
         return productType == "roll"
     }
 
-    /** Current on-hand amount at this stock row (roll_length for rolls, quantity otherwise). */
-    fun JsonObject.onHandQuantity(): Double {
-        if (!isRollStockLine()) return double("quantity") ?: 0.0
-        val rollLength = double("roll_length") ?: 0.0
-        val quantity = double("quantity") ?: 0.0
-        return if (rollLength > 0.0) rollLength else quantity
-    }
+    /** Current on-hand amount at this stock row: `quantity` for every SKU, rolls included (server change of 2026-07-11). */
+    fun JsonObject.onHandQuantity(): Double = double("quantity") ?: 0.0
 
-    /** Original / nominal roll length stored in quantity (rolls only). */
+    /** Original full length of the roll, stored in roll_length (rolls only). */
     fun JsonObject.rollNominalQuantity(): Double? =
-        if (isRollStockLine()) double("quantity")?.takeIf { it > 0.0 } else null
+        if (isRollStockLine()) double("roll_length")?.takeIf { it > 0.0 } else null
 
-    /** full when quantity equals roll_length; partial otherwise (rolls only). */
+    /** full when the remaining length equals the original roll length; partial otherwise (rolls only). */
     fun JsonObject.rollFillStatus(): String? {
         string("roll_fill_status")?.takeIf { it.isNotBlank() }?.let { return it }
         if (!isRollStockLine()) return null
-        val nominal = double("quantity") ?: 0.0
-        if (nominal <= 0.0) return "partial"
-        val onHand = double("roll_length") ?: onHandQuantity()
-        return if (kotlin.math.abs(nominal - onHand) < 0.0001) "full" else "partial"
+        val original = double("roll_length") ?: 0.0
+        if (original <= 0.0) return "partial"
+        return if (kotlin.math.abs(original - onHandQuantity()) < 0.0001) "full" else "partial"
     }
 
     fun JsonObject.boolean(key: String): Boolean? =

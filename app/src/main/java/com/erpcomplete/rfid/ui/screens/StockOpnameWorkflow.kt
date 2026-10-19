@@ -3,14 +3,19 @@ package com.erpcomplete.rfid.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -19,8 +24,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.erpcomplete.rfid.R
 import com.erpcomplete.rfid.data.AppContainer
@@ -30,38 +37,37 @@ import com.erpcomplete.rfid.data.remote.StockOpnameCheckItem
 import com.erpcomplete.rfid.data.remote.WorkflowScanRequest
 import com.erpcomplete.rfid.ui.components.DataTableColumn
 import com.erpcomplete.rfid.ui.components.ErpPrimaryButton
-import com.erpcomplete.rfid.ui.components.QtyField
 import com.erpcomplete.rfid.ui.components.ErpScaffold
 import com.erpcomplete.rfid.ui.components.IndexColumnSpec
 import com.erpcomplete.rfid.ui.components.JsonIndexListTable
-import com.erpcomplete.rfid.ui.components.StockOpnameDetailSkeleton
 import com.erpcomplete.rfid.ui.components.LiveSyncIndicator
-import com.erpcomplete.rfid.ui.components.StatusBanner
-import com.erpcomplete.rfid.ui.components.TableCell
+import com.erpcomplete.rfid.ui.components.QtyField
 import com.erpcomplete.rfid.ui.components.ScanMatchStatus
+import com.erpcomplete.rfid.ui.components.StatusBanner
+import com.erpcomplete.rfid.ui.components.StockOpnameDetailSkeleton
+import com.erpcomplete.rfid.ui.components.TableCell
 import com.erpcomplete.rfid.ui.components.WorkflowDataTable
 import com.erpcomplete.rfid.ui.components.WorkflowLineScanSection
 import com.erpcomplete.rfid.ui.components.WorkflowMatchLine
 import com.erpcomplete.rfid.ui.components.incrementQtyField
-import com.erpcomplete.rfid.ui.components.rememberWorkflowLiveList
-import com.erpcomplete.rfid.ui.components.rememberTableSortSearch
-import com.erpcomplete.rfid.ui.components.scanIncrementDelta
 import com.erpcomplete.rfid.ui.components.rememberScanMatchColors
-import androidx.compose.runtime.collectAsState
-import com.erpcomplete.rfid.util.ApiErrorParser
-import com.erpcomplete.rfid.util.StatusMessage
+import com.erpcomplete.rfid.ui.components.rememberTableSortSearch
+import com.erpcomplete.rfid.ui.components.rememberWorkflowLiveList
+import com.erpcomplete.rfid.ui.components.scanIncrementDelta
 import com.erpcomplete.rfid.ui.util.UiStrings
+import com.erpcomplete.rfid.util.ApiErrorParser
 import com.erpcomplete.rfid.util.DisplayFormat
+import com.erpcomplete.rfid.util.StatusMessage
 import com.erpcomplete.rfid.util.WorkflowJson
 import com.erpcomplete.rfid.util.WorkflowJson.double
 import com.erpcomplete.rfid.util.WorkflowJson.formatQtyWithUnit
 import com.erpcomplete.rfid.util.WorkflowJson.isRollStockLine
-import com.erpcomplete.rfid.util.WorkflowJson.quantityUnitSuffix
 import com.erpcomplete.rfid.util.WorkflowJson.long
 import com.erpcomplete.rfid.util.WorkflowJson.nestedItems
 import com.erpcomplete.rfid.util.WorkflowJson.obj
 import com.erpcomplete.rfid.util.WorkflowJson.productName
 import com.erpcomplete.rfid.util.WorkflowJson.productSku
+import com.erpcomplete.rfid.util.WorkflowJson.quantityUnitSuffix
 import com.erpcomplete.rfid.util.WorkflowJson.string
 import com.erpcomplete.rfid.util.WorkflowJson.variationLabel
 import com.erpcomplete.rfid.util.launchWorkflow
@@ -316,12 +322,20 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                         ),
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    OutlinedTextField(
-                        createType,
-                        { createType = it },
-                        label = { Text(stringResource(R.string.opname_label_type)) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    // The server accepts only these types; a free-text field made a typo fail the whole create.
+                    Text(stringResource(R.string.opname_label_type), style = MaterialTheme.typography.labelMedium)
+                    listOf("cycle_count", "partial", "full").forEach { type ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .selectable(selected = createType == type, role = Role.RadioButton) { createType = type },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = createType == type, onClick = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(UiStrings.apiStatus(type), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
                     OutlinedTextField(
                         createNotes,
                         { createNotes = it },
@@ -340,7 +354,7 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                                 val body = CreateStockOpnameRequest(
                                     warehouse_id = whId,
                                     opname_date = LocalDate.now().toString(),
-                                    opname_type = createType.ifBlank { "cycle_count" },
+                                    opname_type = createType,
                                     notes = createNotes.ifBlank { null },
                                 )
                                 val res = container.api.createStockOpname(body)
@@ -444,7 +458,7 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                         },
                         emptyText = stringResource(R.string.opname_empty_lines),
                     )
-                    if (status != "approved") {
+                    if (status == "in_progress" || status == "completed") {
                         WorkflowLineScanSection(
                             container = container,
                             tags = tags,
@@ -483,7 +497,7 @@ fun StockOpnameScreen(container: AppContainer, onBack: () -> Unit) {
                             )
                         }
                     }
-                    if (status != "approved") {
+                    if (status == "in_progress" || status == "completed") {
                         ErpPrimaryButton(
                             text = stringResource(R.string.opname_btn_save_counts),
                             loading = actionLoading,

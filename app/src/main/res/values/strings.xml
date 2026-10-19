@@ -104,6 +104,10 @@
     <string name="settings_void_success">Tag voided</string>
     <string name="settings_section_account">Account</string>
     <string name="settings_sign_out">Sign out</string>
+    <string name="settings_sign_out_pending_title">Unsynced work will be lost</string>
+    <string name="settings_sign_out_pending_message">%1$d item(s) are still waiting to sync. Signing out discards them.</string>
+    <string name="settings_void_confirm_title">Void this tag?</string>
+    <string name="settings_void_confirm_message">%1$s will stop resolving to its product. This cannot be undone from the app.</string>
     <string name="settings_version">ERPWarehouse %1$s</string>
 
     <!-- Task notifications -->

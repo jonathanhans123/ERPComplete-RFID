@@ -104,6 +104,10 @@
     <string name="settings_void_success">Tag dibatalkan</string>
     <string name="settings_section_account">Akun</string>
     <string name="settings_sign_out">Keluar</string>
+    <string name="settings_sign_out_pending_title">Pekerjaan belum tersinkron akan hilang</string>
+    <string name="settings_sign_out_pending_message">%1$d item masih menunggu sinkronisasi. Keluar akan membuangnya.</string>
+    <string name="settings_void_confirm_title">Batalkan tag ini?</string>
+    <string name="settings_void_confirm_message">%1$s tidak akan lagi terhubung ke produknya. Ini tidak dapat dibatalkan dari aplikasi.</string>
     <string name="settings_version">ERPWarehouse %1$s</string>
 
     <!-- Task notifications -->

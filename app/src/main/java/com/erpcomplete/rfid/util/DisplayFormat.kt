@@ -40,12 +40,11 @@ object DisplayFormat {
             "pending" -> R.string.api_status_pending
             "draft" -> R.string.api_status_draft
             "in_progress" -> R.string.api_status_in_progress
-            "completed", "completed_picking" -> R.string.api_status_completed
+            "completed", "completed_picking", "complete" -> R.string.api_status_completed
             "approved" -> R.string.api_status_approved
             "cancelled", "canceled" -> R.string.api_status_cancelled
             "rejected" -> R.string.api_status_rejected
             "partial" -> R.string.api_status_partial
-            "full" -> R.string.roll_status_full
             "done" -> R.string.api_status_done
             "failed", "fail" -> R.string.api_status_failed
             "purchase_order" -> R.string.gr_source_type_po_title

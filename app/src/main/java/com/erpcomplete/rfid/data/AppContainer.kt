@@ -91,13 +91,22 @@ class AppContainer(context: Context) {
         val builder = chain.request().newBuilder()
             .header("X-Device-Id", deviceId)
             .header("X-App-Version", BuildConfig.VERSION_NAME)
+            .header("X-Device-Model", android.os.Build.MODEL.filter { it.code in 32..126 }.take(64))
             .header("Accept", "application/json")
         sessionCache.accessToken?.takeIf { it.isNotBlank() }?.let {
             builder.header("Authorization", "Bearer $it")
         }
-        sessionCache.businessUnitId?.let { builder.header("X-Business-Unit-Id", it) }
-        sessionCache.teamId?.let { builder.header("X-Team-Id", it) }
-        sessionCache.warehouseId?.let { builder.header("X-Warehouse-Id", it) }
+        // Replayed offline requests carry the workspace they were queued in; everything else uses the current one.
+        val queued = chain.request()
+        if (queued.header("X-Business-Unit-Id") == null) {
+            sessionCache.businessUnitId?.let { builder.header("X-Business-Unit-Id", it) }
+        }
+        if (queued.header("X-Team-Id") == null) {
+            sessionCache.teamId?.let { builder.header("X-Team-Id", it) }
+        }
+        if (queued.header("X-Warehouse-Id") == null) {
+            sessionCache.warehouseId?.let { builder.header("X-Warehouse-Id", it) }
+        }
         val request = builder.build()
         val response = chain.proceed(request)
         if (BuildConfig.DEBUG) {

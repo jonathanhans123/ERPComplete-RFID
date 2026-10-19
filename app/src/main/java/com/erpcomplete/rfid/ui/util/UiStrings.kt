@@ -69,6 +69,7 @@ object UiStrings {
             "picking" -> R.string.location_type_picking
             "shipping" -> R.string.location_type_shipping
             "quality" -> R.string.location_type_quality
+            "defective" -> R.string.location_type_defective
             else -> return code.replace('_', ' ').replaceFirstChar { it.uppercase() }
         }
         return context.getString(res)

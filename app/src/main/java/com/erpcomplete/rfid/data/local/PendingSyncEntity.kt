@@ -13,4 +13,8 @@ data class PendingSyncEntity(
     val createdAt: Long = System.currentTimeMillis(),
     val attemptCount: Int = 0,
     val lastError: String? = null,
+    /** Workspace the request was queued in; replayed as headers so a later workspace switch cannot redirect it. */
+    val businessUnitId: String? = null,
+    val teamId: String? = null,
+    val warehouseId: String? = null,
 )

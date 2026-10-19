@@ -38,11 +38,20 @@ class MainActivity : ComponentActivity() {
 
     private var onPermissionsReady: (() -> Unit)? = null
 
+    /** Route from a notification tapped while the activity is already running (delivered to onNewIntent). */
+    private val newIntentRoute = mutableStateOf<String?>(null)
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { _ ->
         onPermissionsReady?.invoke()
         onPermissionsReady = null
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        newIntentRoute.value = intent.getStringExtra(WarehouseNotificationHelper.EXTRA_OPEN_ROUTE)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,6 +66,13 @@ class MainActivity : ComponentActivity() {
             val navController = rememberNavController()
             val backStackEntry by navController.currentBackStackEntryAsState()
             var openRoute by remember { mutableStateOf(initialOpenRoute) }
+            val tappedRoute by newIntentRoute
+            androidx.compose.runtime.LaunchedEffect(tappedRoute) {
+                tappedRoute?.let {
+                    openRoute = it
+                    newIntentRoute.value = null
+                }
+            }
             var showBgReliability by remember { mutableStateOf(false) }
             var showBgManual by remember { mutableStateOf(false) }
             val context = this@MainActivity

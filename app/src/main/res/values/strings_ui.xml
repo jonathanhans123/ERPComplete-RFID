@@ -310,6 +310,8 @@
     <string name="cycle_count_success_session_started">Session started</string>
     <string name="cycle_count_error_start_session_first">Start a session first</string>
     <string name="cycle_count_success_submitted">Submitted</string>
+    <string name="cycle_count_variance_summary">Submitted: scanned %1$d of %2$d expected, %3$d missing, %4$d unexpected.</string>
+    <string name="cycle_count_error_invalid_location">Location must be a number, or leave it blank.</string>
     <string name="inventory_title">Inventory</string>
     <string name="inventory_subtitle">Master data &amp; on-hand stock</string>
     <string name="inventory_perm_adjust_denied">You do not have permission to create stock adjustments.</string>
@@ -342,6 +344,7 @@
     <string name="location_type_picking">Picking</string>
     <string name="location_type_shipping">Shipping</string>
     <string name="location_type_quality">Quality</string>
+    <string name="location_type_defective">Defective</string>
     <string name="inventory_stock_picker_title">Stock by location</string>
     <string name="inventory_stock_picker_subtitle">Pick a bin to view stock</string>
     <string name="inventory_stock_no_bins">No bin locations found.</string>
@@ -713,6 +716,7 @@
     <string name="error_check_input">Please check your input.</string>
     <string name="error_too_many_attempts">Too many attempts. Wait about a minute, then try again.</string>
     <string name="error_server">Server error (%1$d). Try again later.</string>
+    <string name="error_not_found">Not found. It may have been removed or belong to another workspace.</string>
     <string name="error_request_failed">Request failed (%1$d).</string>
     <string name="error_web_page_not_api">Reached a web page instead of the API. Contact your administrator.</string>
     <string name="error_something_wrong">Something went wrong</string>

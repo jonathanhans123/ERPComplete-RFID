@@ -9,6 +9,7 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.HeaderMap
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
@@ -40,7 +41,10 @@ interface ErpApiService {
     suspend fun resolveBulk(@Body body: ResolveBulkRequest): Response<ApiEnvelope<ResolveBulkResult>>
 
     @POST("rfid/reads")
-    suspend fun ingestReads(@Body body: ReadsRequest): Response<ApiEnvelope<ReadsResult>>
+    suspend fun ingestReads(
+        @Body body: ReadsRequest,
+        @HeaderMap workspace: Map<String, String> = emptyMap(),
+    ): Response<ApiEnvelope<ReadsResult>>
 
     @GET("rfid/tags")
     suspend fun listRfidTags(
@@ -216,6 +220,7 @@ interface ErpApiService {
     @GET("products")
     suspend fun listProducts(
         @Query("search") search: String? = null,
+        @Query("for_picker") forPicker: Boolean? = true,
         @Query("per_page") perPage: Int = 50,
     ): Response<ApiEnvelope<JsonElement>>
 
@@ -314,6 +319,7 @@ interface ErpApiService {
         @Query("warehouse_location_id") warehouseLocationId: Long? = null,
         @Query("batch_number") batchNumber: String? = null,
         @Query("roll_number") rollNumber: String? = null,
+        @Query("unlocated") unlocated: Boolean? = null,
     ): Response<JsonElement>
 
     @GET("stock-relocations")
@@ -346,6 +352,8 @@ interface ErpApiService {
         @Query("warehouse_id") warehouseId: Long,
         @Query("from_warehouse_location_id") fromWarehouseLocationId: Long? = null,
         @Query("variation_id") variationId: Long? = null,
+        @Query("batch_number") batchNumber: String? = null,
+        @Query("roll_number") rollNumber: String? = null,
     ): Response<JsonElement>
 
     @GET("stock-opnames")
@@ -385,10 +393,18 @@ interface ErpApiService {
     ): Response<ApiEnvelope<JsonElement>>
 
     @POST
-    suspend fun postRaw(@Url url: String, @Body body: RequestBody): Response<ResponseBody>
+    suspend fun postRaw(
+        @Url url: String,
+        @Body body: RequestBody,
+        @HeaderMap workspace: Map<String, String> = emptyMap(),
+    ): Response<ResponseBody>
 
     @PUT
-    suspend fun putRaw(@Url url: String, @Body body: RequestBody): Response<ResponseBody>
+    suspend fun putRaw(
+        @Url url: String,
+        @Body body: RequestBody,
+        @HeaderMap workspace: Map<String, String> = emptyMap(),
+    ): Response<ResponseBody>
 }
 
 data class RefreshTokenResponse(
@@ -540,6 +556,14 @@ data class CreateGoodsReceiptItem(
     val roll_number: String? = null,
     val roll_length: Double? = null,
     val packing_list_item_id: Long? = null,
+    /** 1 for the main row of a packing-list source line, 0 for each roll under it; omitted otherwise. */
+    val is_packing_list_item: Int? = null,
+    // The server reads these keys directly on packing-list rows; "" arrives as null (ConvertEmptyStringsToNull)
+    // and keeps the key present, whereas Gson drops real nulls.
+    val container_number: String? = null,
+    val delivery_note_number: String? = null,
+    val condition_notes: String? = null,
+    val quantity_variance_reason: String? = null,
 )
 
 data class CreateGoodsReceiptRequest(
@@ -689,6 +713,7 @@ data class RelocationProductPayload(
     val type: String,
     val quantity: Double,
     val variation_value_id: Long? = null,
+    val batch_number: String? = null,
     val roll_data: RelocationRollDataPayload? = null,
     val variations: List<RelocationVariationPayload>? = null,
 )

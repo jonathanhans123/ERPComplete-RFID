@@ -40,7 +40,8 @@ object ApiErrorParser {
         }
         422 -> parseBody(response) ?: ctx().getString(R.string.error_check_input)
         429 -> ctx().getString(R.string.error_too_many_attempts)
-        in 500..599 -> ctx().getString(R.string.error_server, response.code())
+        404 -> notFoundMessage(response)
+        in 500..599 -> serverMessage(response) ?: ctx().getString(R.string.error_server, response.code())
         403 -> parseBody(response) ?: ctx().getString(R.string.error_request_failed, response.code())
         else -> parseBody(response) ?: ctx().getString(R.string.error_request_failed, response.code())
     }
@@ -53,6 +54,31 @@ object ApiErrorParser {
         }.getOrNull() == true
     }
 
+    /**
+     * The server answers some business-rule failures (stock drift on approve, missing roll number, bad opname
+     * type) with a 5xx that still carries a readable JSON `message`. Show that; ignore Laravel's generic
+     * "Server Error" and anything that is not a JSON message so a real crash never leaks internals.
+     */
+    private fun serverMessage(response: Response<*>): String? {
+        val raw = runCatching { response.errorBody()?.string() }.getOrNull()
+        if (raw.isNullOrBlank() || raw.contains("<html", ignoreCase = true)) return null
+        val message = runCatching {
+            gson.fromJson(raw, JsonObject::class.java).get("message")?.takeIf { !it.isJsonNull }?.asString
+        }.getOrNull()?.trim()
+        if (message.isNullOrBlank() || message.equals("Server Error", ignoreCase = true)) return null
+        return message.take(240)
+    }
+
+    /** Laravel's "No query results for model [App\Models\X]" is meaningless to the operator. */
+    private fun notFoundMessage(response: Response<*>): String {
+        val parsed = parseBody(response)
+        return if (parsed.isNullOrBlank() || parsed.contains("No query results", ignoreCase = true) || parsed.startsWith("{")) {
+            ctx().getString(R.string.error_not_found)
+        } else {
+            parsed
+        }
+    }
+
     private fun parseBody(response: Response<*>): String? {
         val raw = runCatching { response.errorBody()?.string() }.getOrNull()
             ?: runCatching { response.body()?.let { gson.toJson(it) } }.getOrNull()
@@ -62,8 +88,19 @@ object ApiErrorParser {
         }
         return runCatching {
             val json = gson.fromJson(raw, JsonObject::class.java)
-            json.get("message")?.takeIf { !it.isJsonNull }?.asString
-                ?: json.getAsJsonObject("errors")?.entrySet()?.firstOrNull()?.value?.asJsonArray?.firstOrNull()?.asString
+            val message = json.get("message")?.takeIf { !it.isJsonNull && it.isJsonPrimitive }?.asString
+            val firstFieldError = json.getAsJsonObject("errors")?.entrySet()?.firstOrNull()?.value
+                ?.takeIf { it.isJsonArray }?.asJsonArray?.firstOrNull()?.asString
+            // "Validation failed" alone tells the operator nothing; the field error says what to fix.
+            val generic = message.isNullOrBlank() || message.equals("Validation failed", ignoreCase = true)
+            if (generic && firstFieldError != null) {
+                firstFieldError
+            } else {
+                message?.takeIf { it.isNotBlank() }
+                    // Tenant/plan gates (trial ended, e-mail unverified, no API access) send only `error`.
+                    ?: json.get("error")?.takeIf { !it.isJsonNull && it.isJsonPrimitive }?.asString
+                    ?: firstFieldError
+            }
         }.getOrNull() ?: raw.take(160)
     }
 }

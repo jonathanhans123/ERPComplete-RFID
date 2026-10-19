@@ -13,8 +13,8 @@ android {
         applicationId = "com.erpcomplete.rfid"
         minSdk = 29
         targetSdk = 34
-        versionCode = 13
-        versionName = "0.1.12"
+        versionCode = 14
+        versionName = "0.1.13"
 
         buildConfigField("String", "API_BASE_URL", "\"https://187.77.125.241/api/v1\"")
         // Host header for the production VPS (reached by IP); defined here so every flavor compiles.
@@ -26,10 +26,13 @@ android {
         create("emulator") {
             dimension = "target"
             buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8000/api/v1\"")
+            // Plain http to the host machine is only needed by the emulator build.
+            manifestPlaceholders["cleartextTraffic"] = "true"
         }
         create("device") {
             dimension = "target"
             buildConfigField("String", "API_BASE_URL", "\"https://187.77.125.241/api/v1\"")
+            manifestPlaceholders["cleartextTraffic"] = "false"
         }
     }
 

@@ -221,6 +221,59 @@ private fun parseGrSourceLines(items: List<JsonObject>, productFallback: String)
     return lines
 }
 
+/**
+ * Server contract for a packing-list source line: one main row (is_packing_list_item=1) followed by one sub-row
+ * per roll (is_packing_list_item=0), all sharing the source item id. Without the main row the server saves only
+ * the first roll of the group.
+ */
+private fun withPackingListMainRows(
+    drafts: List<GrLineDraft>,
+    items: List<CreateGoodsReceiptItem>,
+): List<CreateGoodsReceiptItem> {
+    val result = mutableListOf<CreateGoodsReceiptItem>()
+    val emitted = mutableSetOf<Long>()
+    items.forEachIndexed { index, item ->
+        val sourceId = drafts[index].sourceItemId
+        if (item.packing_list_item_id == null || sourceId == null) {
+            result.add(item)
+            return@forEachIndexed
+        }
+        if (emitted.add(sourceId)) {
+            val groupIdx = drafts.indices.filter {
+                drafts[it].sourceItemId == sourceId && items[it].packing_list_item_id != null
+            }
+            val allRejected = groupIdx.all { items[it].quality_status == "rejected" }
+            result.add(
+                item.copy(
+                    received_quantity = null,
+                    accepted_quantity = null,
+                    rejected_quantity = null,
+                    quality_status = if (allRejected) "rejected" else "approved",
+                    roll_number = null,
+                    roll_length = null,
+                    packing_list_item_id = null,
+                    is_packing_list_item = 1,
+                    container_number = "",
+                    delivery_note_number = "",
+                    condition_notes = "",
+                    quantity_variance_reason = "",
+                ),
+            )
+        }
+        result.add(
+            item.copy(
+                ordered_quantity = drafts[index].rollLengthHint ?: item.ordered_quantity,
+                is_packing_list_item = 0,
+                container_number = "",
+                delivery_note_number = "",
+                condition_notes = "",
+                quantity_variance_reason = "",
+            ),
+        )
+    }
+    return result
+}
+
 private data class GrDetailHeaderEdit(
     val receiptDate: String,
     val deliveryNote: String,
@@ -307,7 +360,8 @@ private fun buildGrUpdateRequest(
                 else -> "approved"
             },
             roll_number = line.rollNumber,
-            roll_length = line.acceptedQty.toDoubleOrNull() ?: line.rollLengthHint,
+            // The server treats any roll_length as a roll, so plain-quantity products must not send one.
+            roll_length = if (line.isRollProduct) line.acceptedQty.toDoubleOrNull() ?: line.rollLengthHint else null,
         )
     }
     return CreateGoodsReceiptRequest(
@@ -1127,7 +1181,7 @@ fun ReceiveScreen(
                                     val sourceId = selectedSource?.id ?: error(errChooseSource)
                                     val whId = selectedWarehouse?.id ?: error(errChooseWarehouse)
                                     val userId = selectedReceivedBy?.id ?: error(errChooseReceiver)
-                                    val items = lineDrafts.map { line ->
+                                    val lineItems = lineDrafts.map { line ->
                                         val acc = line.acceptedQty.toDoubleOrNull() ?: 0.0
                                         val rej = line.rejectedQty.toDoubleOrNull() ?: 0.0
                                         if (acc <= 0 && rej <= 0) {
@@ -1157,11 +1211,15 @@ fun ReceiveScreen(
                                             variation_value_id = line.variationValueId,
                                             quality_status = line.deriveQualityStatus(),
                                             roll_number = line.rollNumber,
-                                            roll_length = line.acceptedQty.toDoubleOrNull()
-                                                ?: line.rollLengthHint,
+                                            roll_length = if (line.isRollProduct) {
+                                                line.acceptedQty.toDoubleOrNull() ?: line.rollLengthHint
+                                            } else {
+                                                null
+                                            },
                                             packing_list_item_id = line.packingListItemId,
                                         )
                                     }
+                                    val items = withPackingListMainRows(lineDrafts, lineItems)
                                     val supplierId = when (sourceType) {
                                         "purchase_order" -> sourceHeader?.long("supplier_id")
                                         "sales_return" -> sourceHeader?.long("contact_id")
@@ -1178,7 +1236,7 @@ fun ReceiveScreen(
                                         vehicle_number = vehicleNumber.ifBlank { null },
                                         driver_name = driverName.ifBlank { null },
                                         notes = receiptNotes.ifBlank { null },
-                                        total_items = items.size,
+                                        total_items = items.count { it.is_packing_list_item != 0 },
                                         total_received_quantity = items.sumOf { it.received_quantity ?: 0.0 },
                                         items = items,
                                     )
@@ -1215,7 +1273,11 @@ fun ReceiveScreen(
                 val gr = detail
                 val putawayTaskId = createdPutawayTaskId ?: gr?.firstPutawayTaskId()
                 val receiptStatus = gr?.string("receipt_status") ?: gr?.string("status")
-                val canEditLines = receiptStatus in setOf("pending", "partial", "draft")
+                // The server refuses edits once any putaway task is completed (422), so don't offer them then.
+                val putawayStarted = gr?.array("putaway_tasks")?.any {
+                    it.isJsonObject && it.asJsonObject.string("status") == "completed"
+                } == true
+                val canEditLines = receiptStatus in setOf("pending", "partial") && !putawayStarted
 
                 Column(
                     Modifier.weight(1f).verticalScroll(rememberScrollState()),

@@ -7,6 +7,7 @@ import com.erpcomplete.rfid.data.local.PendingSyncEntity
 import com.erpcomplete.rfid.data.remote.ErpApiService
 import com.erpcomplete.rfid.data.remote.ReadsRequest
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,6 +94,9 @@ class SyncRepository(
                 method = method.uppercase(),
                 bodyJson = bodyJson,
                 idempotencyKey = idempotencyKey,
+                businessUnitId = sessionCache.businessUnitId,
+                teamId = sessionCache.teamId,
+                warehouseId = sessionCache.warehouseId,
             ),
         )
         refreshPendingCount()
@@ -116,33 +120,54 @@ class SyncRepository(
         val items = dao.oldest()
         for (item in items) {
             if (item.attemptCount >= MAX_ATTEMPTS) continue
-            val ok = executeItem(item)
-            if (ok) {
-                dao.delete(item.id)
-                flushed++
-            } else {
-                dao.markFailed(item.id, UiStrings.httpSyncError())
+            val code = executeItem(item)
+            when {
+                code in 200..299 -> {
+                    dao.delete(item.id)
+                    flushed++
+                }
+                // An expired or revoked session says nothing about the request itself: keep the whole queue for
+                // after the next sign-in/refresh instead of dropping work that was captured offline.
+                code == 401 || code == 419 -> break
+                // The server understood and refused it (validation, permission, gone): retrying cannot help.
+                code in 400..499 && code != 408 && code != 429 ->
+                    dao.markExhausted(item.id, MAX_ATTEMPTS, UiStrings.httpSyncError())
+                else -> dao.markFailed(item.id, UiStrings.httpSyncError())
             }
         }
         refreshPendingCount()
         flushed
     }
 
-    private suspend fun executeItem(item: PendingSyncEntity): Boolean {
-        return when {
-            item.endpoint == "rfid/reads" && item.method == "POST" -> {
-                val body = gson.fromJson(item.bodyJson, ReadsRequest::class.java)
-                api.ingestReads(body).isSuccessful
+    private fun workspaceHeaders(item: PendingSyncEntity): Map<String, String> = buildMap {
+        item.businessUnitId?.let { put("X-Business-Unit-Id", it) }
+        item.teamId?.let { put("X-Team-Id", it) }
+        item.warehouseId?.let { put("X-Warehouse-Id", it) }
+    }
+
+    /** HTTP status of the replayed request, or -1 when it could not be sent (network failure, unknown method). */
+    private suspend fun executeItem(item: PendingSyncEntity): Int {
+        val workspace = workspaceHeaders(item)
+        return try {
+            when {
+                item.endpoint == "rfid/reads" && item.method == "POST" -> {
+                    val body = gson.fromJson(item.bodyJson, ReadsRequest::class.java)
+                    api.ingestReads(body, workspace).code()
+                }
+                item.method == "POST" -> {
+                    val url = buildUrl(item.endpoint)
+                    api.postRaw(url, item.bodyJson.toRequestBody(jsonMedia), workspace).code()
+                }
+                item.method == "PUT" -> {
+                    val url = buildUrl(item.endpoint)
+                    api.putRaw(url, item.bodyJson.toRequestBody(jsonMedia), workspace).code()
+                }
+                else -> -1
             }
-            item.method == "POST" -> {
-                val url = buildUrl(item.endpoint)
-                api.postRaw(url, item.bodyJson.toRequestBody(jsonMedia)).isSuccessful
-            }
-            item.method == "PUT" -> {
-                val url = buildUrl(item.endpoint)
-                api.putRaw(url, item.bodyJson.toRequestBody(jsonMedia)).isSuccessful
-            }
-            else -> false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            -1
         }
     }
 
